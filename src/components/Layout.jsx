@@ -1,17 +1,18 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutGrid, PlusCircle, Truck, Building2, MapPin, DollarSign, Menu, X
+  LayoutDashboard, LayoutGrid, PlusCircle, Truck, Building2, MapPin, DollarSign, Menu, X
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 
 const nav = [
-  { to: '/', label: 'Load Board', icon: LayoutGrid },
-  { to: '/post', label: 'Post Load', icon: PlusCircle },
-  { to: '/carriers', label: 'Carriers', icon: Truck },
-  { to: '/shippers', label: 'Shippers', icon: Building2 },
-  { to: '/tracking', label: 'Tracking', icon: MapPin },
-  { to: '/finance', label: 'Finance', icon: DollarSign },
+  { to: '/',         label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/loads',    label: 'Load Board', icon: LayoutGrid },
+  { to: '/post',     label: 'Post Load',  icon: PlusCircle },
+  { to: '/carriers', label: 'Carriers',   icon: Truck },
+  { to: '/shippers', label: 'Shippers',   icon: Building2 },
+  { to: '/tracking', label: 'Tracking',   icon: MapPin },
+  { to: '/finance',  label: 'Finance',    icon: DollarSign },
 ];
 
 export default function Layout({ children }) {

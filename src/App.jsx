@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Layout from './components/Layout';
+import Dashboard from './pages/Dashboard';
 import LoadBoard from './pages/LoadBoard';
 import PostLoad from './pages/PostLoad';
 import Carriers from './pages/Carriers';
@@ -14,12 +15,13 @@ export default function App() {
       <AppProvider>
         <Layout>
           <Routes>
-            <Route path="/" element={<LoadBoard />} />
-            <Route path="/post" element={<PostLoad />} />
-            <Route path="/carriers" element={<Carriers />} />
-            <Route path="/shippers" element={<Shippers />} />
-            <Route path="/tracking" element={<Tracking />} />
-            <Route path="/finance" element={<Finance />} />
+            <Route path="/"          element={<Dashboard />} />
+            <Route path="/loads"     element={<LoadBoard />} />
+            <Route path="/post"      element={<PostLoad />} />
+            <Route path="/carriers"  element={<Carriers />} />
+            <Route path="/shippers"  element={<Shippers />} />
+            <Route path="/tracking"  element={<Tracking />} />
+            <Route path="/finance"   element={<Finance />} />
           </Routes>
         </Layout>
       </AppProvider>

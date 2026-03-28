@@ -43,6 +43,24 @@ export function AppProvider({ children }) {
     );
   }
 
+  function markPickedUp(loadId) {
+    const now = new Date().toLocaleString('en-KE', { hour12: false }).replace(',', '');
+    setLoads(prev =>
+      prev.map(l => {
+        if (l.id !== loadId) return l;
+        return {
+          ...l,
+          status: 'In Transit',
+          timeline: l.timeline.map(t => {
+            if (t.event === 'Picked Up') return { ...t, time: now, done: true };
+            if (t.event === 'In Transit') return { ...t, time: now, done: true };
+            return t;
+          }),
+        };
+      })
+    );
+  }
+
   function markDelivered(loadId) {
     const now = new Date().toLocaleString('en-KE', { hour12: false }).replace(',', '');
     setLoads(prev =>
@@ -84,7 +102,7 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider value={{
       loads, carriers, shippers, stats,
-      addLoad, updateLoad, assignCarrier, markDelivered, cancelLoad,
+      addLoad, updateLoad, assignCarrier, markPickedUp, markDelivered, cancelLoad,
       markCommissionReceived, addCarrier,
     }}>
       {children}
