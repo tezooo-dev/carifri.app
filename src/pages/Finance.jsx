@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { DollarSign, TrendingUp, Clock, CheckCircle, Download, FileText } from 'lucide-react';
+import { DollarSign, TrendingUp, Clock, CheckCircle, Download, FileText, Smartphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import InvoiceModal from '../components/InvoiceModal';
+import MpesaModal from '../components/MpesaModal';
 
 export default function Finance() {
   const { loads, carriers, markCommissionReceived, stats, settings } = useApp();
   const [invoiceId, setInvoiceId] = useState(null);
+  const [mpesaId,   setMpesaId]   = useState(null);
   const [filterPaid, setFilterPaid] = useState('all'); // 'all' | 'pending' | 'received'
 
   const cur = settings.currency;
@@ -165,13 +167,22 @@ export default function Finance() {
                     {l.commissionReceived ? (
                       <span className="text-xs text-emerald-600 font-medium block">Received</span>
                     ) : (
-                      <button
-                        onClick={() => markCommissionReceived(l.id)}
-                        disabled={l.status !== 'Delivered'}
-                        className="text-xs text-blue-600 hover:underline font-medium block disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        Mark Received
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setMpesaId(l.id)}
+                          disabled={l.status !== 'Delivered'}
+                          className="flex items-center gap-0.5 text-xs text-green-700 hover:underline font-medium justify-end disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Smartphone size={11} /> M-Pesa
+                        </button>
+                        <button
+                          onClick={() => markCommissionReceived(l.id)}
+                          disabled={l.status !== 'Delivered'}
+                          className="text-xs text-slate-400 hover:underline block disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          Manual
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -228,13 +239,22 @@ export default function Finance() {
                           <CheckCircle size={13} /> Received
                         </span>
                       ) : (
-                        <button
-                          onClick={() => markCommissionReceived(l.id)}
-                          disabled={l.status !== 'Delivered'}
-                          className="text-xs px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          Mark Received
-                        </button>
+                        <div className="flex flex-col gap-1 items-center">
+                          <button
+                            onClick={() => setMpesaId(l.id)}
+                            disabled={l.status !== 'Delivered'}
+                            className="flex items-center gap-1 text-xs px-2.5 py-1 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 font-medium disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <Smartphone size={11} /> M-Pesa
+                          </button>
+                          <button
+                            onClick={() => markCommissionReceived(l.id)}
+                            disabled={l.status !== 'Delivered'}
+                            className="text-xs text-slate-400 hover:text-slate-600 underline disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            Manual
+                          </button>
+                        </div>
                       )}
                     </td>
                     <td className="px-5 py-3 text-center">
@@ -261,6 +281,9 @@ export default function Finance() {
 
       {invoiceId && (
         <InvoiceModal loadId={invoiceId} onClose={() => setInvoiceId(null)} />
+      )}
+      {mpesaId && (
+        <MpesaModal loadId={mpesaId} onClose={() => setMpesaId(null)} />
       )}
     </div>
   );

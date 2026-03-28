@@ -89,38 +89,90 @@ function StepBar({ timeline, status }) {
   );
 }
 
-function RouteVisual({ origin, destination, status }) {
+function GPSTruckAnimator({ progress, status }) {
+  // progress: 0–100, animated truck icon crawling left → right
+  const clampedProgress = Math.max(0, Math.min(100, progress));
+  const isMoving = status === 'In Transit';
+  const isDone = status === 'Delivered';
+
+  return (
+    <div className="relative h-10 flex items-center">
+      {/* Road */}
+      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1 bg-slate-200 rounded-full" />
+      {/* Progress fill */}
+      <div
+        className={`absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded-full transition-all duration-1000 ease-out ${
+          isDone ? 'bg-emerald-500' : isMoving ? 'bg-amber-400' : 'bg-blue-400'
+        }`}
+        style={{ width: `${clampedProgress}%` }}
+      />
+      {/* Truck icon */}
+      <div
+        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 transition-all duration-1000 ease-out"
+        style={{ left: `${Math.max(4, Math.min(96, clampedProgress))}%` }}
+      >
+        <div className={`relative flex items-center justify-center w-9 h-9 rounded-full shadow-md border-2 border-white ${
+          isDone ? 'bg-emerald-500' : isMoving ? 'bg-amber-500' : 'bg-blue-500'
+        }`}>
+          <Truck size={17} className="text-white" />
+          {isMoving && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full border border-white animate-ping opacity-75" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RouteVisual({ origin, destination, status, progress }) {
   const meta = STATUS_META[status] || STATUS_META['Available'];
   return (
-    <div className="flex items-center gap-3 bg-slate-50 rounded-xl p-4 border border-slate-200">
-      {/* Origin */}
-      <div className="text-center shrink-0">
-        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center mx-auto mb-1">
-          <Package size={18} className="text-white" />
+    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-3">
+      {/* GPS Truck animator */}
+      <div className="px-2">
+        <div className="flex justify-between text-xs font-bold text-slate-700 mb-1">
+          <span>{origin}</span>
+          <span>{destination}</span>
         </div>
-        <div className="text-xs font-bold text-slate-900">{origin}</div>
-        <div className="text-xs text-slate-400">Origin</div>
+        <GPSTruckAnimator progress={progress} status={status} />
+        <div className="flex justify-between text-xs text-slate-400 mt-1">
+          <span>Start</span>
+          <span className={`font-semibold ${
+            status === 'In Transit' ? 'text-amber-600 animate-pulse' :
+            status === 'Delivered' ? 'text-emerald-600' : 'text-slate-400'
+          }`}>{progress}% complete</span>
+          <span>End</span>
+        </div>
       </div>
 
-      {/* Route line */}
-      <div className="flex-1 flex items-center gap-1 min-w-0">
-        <div className="flex-1 border-t-2 border-dashed border-slate-300" />
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold shrink-0 ${meta.bg} ${meta.border} ${meta.color}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} ${status === 'In Transit' ? 'animate-pulse' : ''}`} />
-          {status}
+      {/* Origin / Status / Destination row */}
+      <div className="flex items-center gap-3">
+        <div className="text-center shrink-0">
+          <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center mx-auto mb-1">
+            <Package size={16} className="text-white" />
+          </div>
+          <div className="text-xs font-bold text-slate-900">{origin}</div>
+          <div className="text-xs text-slate-400">Origin</div>
         </div>
-        <div className="flex-1 border-t-2 border-dashed border-slate-300" />
-      </div>
 
-      {/* Destination */}
-      <div className="text-center shrink-0">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-1 ${
-          status === 'Delivered' ? 'bg-emerald-600' : 'bg-slate-300'
-        }`}>
-          <MapPin size={18} className="text-white" />
+        <div className="flex-1 flex items-center gap-1 min-w-0">
+          <div className="flex-1 border-t-2 border-dashed border-slate-300" />
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold shrink-0 ${meta.bg} ${meta.border} ${meta.color}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} ${status === 'In Transit' ? 'animate-pulse' : ''}`} />
+            {status}
+          </div>
+          <div className="flex-1 border-t-2 border-dashed border-slate-300" />
         </div>
-        <div className="text-xs font-bold text-slate-900">{destination}</div>
-        <div className="text-xs text-slate-400">Destination</div>
+
+        <div className="text-center shrink-0">
+          <div className={`w-9 h-9 rounded-full flex items-center justify-center mx-auto mb-1 ${
+            status === 'Delivered' ? 'bg-emerald-600' : 'bg-slate-300'
+          }`}>
+            <MapPin size={16} className="text-white" />
+          </div>
+          <div className="text-xs font-bold text-slate-900">{destination}</div>
+          <div className="text-xs text-slate-400">Destination</div>
+        </div>
       </div>
     </div>
   );
@@ -323,22 +375,12 @@ export default function Tracking() {
                   </button>
                 </div>
 
-                {/* Route visual */}
-                <RouteVisual origin={live.origin} destination={live.destination} status={live.status} />
+                {/* Route visual with GPS animation */}
+                <RouteVisual origin={live.origin} destination={live.destination} status={live.status} progress={progress} />
 
                 {/* Step bar */}
                 <StepBar timeline={live.timeline} status={live.status} />
 
-                {/* Progress */}
-                <div className="flex items-center gap-3 mt-1">
-                  <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-700 ${live.status === 'Cancelled' ? 'bg-red-400' : 'bg-blue-500'}`}
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-slate-500 shrink-0">{progress}% complete</span>
-                </div>
               </div>
 
               {/* Timeline detail */}

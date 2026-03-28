@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 import { initialLoads, initialCarriers, initialShippers } from '../data/store';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { useToast } from './ToastContext';
+import { useNotifications } from './NotificationContext';
 
 const AppContext = createContext(null);
 
@@ -16,6 +17,7 @@ const DEFAULT_SETTINGS = {
 
 export function AppProvider({ children }) {
   const toast = useToast();
+  const { push: notify } = useNotifications();
   const [loads,    setLoads]    = useLocalStorage('fl_loads',    initialLoads);
   const [carriers, setCarriers] = useLocalStorage('fl_carriers', initialCarriers);
   const [shippers, setShippers] = useLocalStorage('fl_shippers', initialShippers);
@@ -33,6 +35,7 @@ export function AppProvider({ children }) {
       )
     );
     toast(`Load ${load.id} posted — ${load.origin} → ${load.destination}`, 'success');
+    notify('New Load Posted', `${load.id}: ${load.origin} → ${load.destination} | ${load.commodity}`, 'success');
   }
 
   function updateLoad(id, changes) {
@@ -59,6 +62,7 @@ export function AppProvider({ children }) {
       prev.map(c => (c.id === carrierId ? { ...c, totalLoads: c.totalLoads + 1 } : c))
     );
     toast(`${carrier?.name ?? 'Carrier'} assigned to ${loadId}`, 'success');
+    notify('Carrier Assigned', `${carrier?.name ?? 'Carrier'} assigned to load ${loadId}`, 'success');
   }
 
   function markPickedUp(loadId) {
@@ -78,6 +82,7 @@ export function AppProvider({ children }) {
       })
     );
     toast(`${loadId} picked up — now In Transit`, 'success');
+    notify('Shipment Picked Up', `Load ${loadId} is now In Transit`, 'info');
   }
 
   function markDelivered(loadId) {
@@ -95,15 +100,15 @@ export function AppProvider({ children }) {
         };
       })
     );
-    toast(
-      `${loadId} delivered — ${settings.currency} ${load?.commission?.toLocaleString() ?? ''} commission pending`,
-      'success'
-    );
+    const commStr = `${settings.currency} ${load?.commission?.toLocaleString() ?? ''}`;
+    toast(`${loadId} delivered — ${commStr} commission pending`, 'success');
+    notify('Load Delivered ✓', `${loadId} delivered. Commission ${commStr} is now pending collection.`, 'success');
   }
 
   function cancelLoad(loadId) {
     setLoads(prev => prev.map(l => (l.id === loadId ? { ...l, status: 'Cancelled' } : l)));
     toast(`Load ${loadId} cancelled`, 'error');
+    notify('Load Cancelled', `Load ${loadId} has been cancelled`, 'error');
   }
 
   function markCommissionReceived(loadId) {
@@ -111,10 +116,9 @@ export function AppProvider({ children }) {
     setLoads(prev =>
       prev.map(l => (l.id === loadId ? { ...l, commissionReceived: true } : l))
     );
-    toast(
-      `Commission ${settings.currency} ${load?.commission?.toLocaleString() ?? ''} received for ${loadId}`,
-      'success'
-    );
+    const commAmt = `${settings.currency} ${load?.commission?.toLocaleString() ?? ''}`;
+    toast(`Commission ${commAmt} received for ${loadId}`, 'success');
+    notify('Commission Received 💰', `${commAmt} commission collected for load ${loadId}`, 'success');
   }
 
   function addCarrier(carrier) {
