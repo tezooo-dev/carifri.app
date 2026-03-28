@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calculator, CheckCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { TRUCK_TYPES, COMMODITIES, COMMISSION_RATE } from '../data/store';
+import { TRUCK_TYPES, COMMODITIES } from '../data/store';
 
 const CITIES = ['Nairobi', 'Mombasa', 'Kisumu', 'Eldoret', 'Nakuru', 'Thika', 'Machakos', 'Nyeri', 'Malindi', 'Garissa'];
 
@@ -25,13 +25,13 @@ const empty = {
 };
 
 export default function PostLoad() {
-  const { addLoad, shippers } = useApp();
+  const { addLoad, shippers, settings, rate } = useApp();
   const navigate = useNavigate();
   const [form, setForm] = useState(empty);
   const [submitted, setSubmitted] = useState(false);
 
   const commission = form.freightAmount
-    ? Math.round(parseFloat(form.freightAmount) * COMMISSION_RATE)
+    ? Math.round(parseFloat(form.freightAmount) * rate)
     : 0;
 
   function set(k, v) {
@@ -264,7 +264,7 @@ export default function PostLoad() {
             <div className="mt-4 flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
               <Calculator size={18} className="text-emerald-600 shrink-0" />
               <div className="text-sm">
-                <span className="text-slate-600">Your commission (8%): </span>
+                <span className="text-slate-600">Your commission ({settings.commissionRate}%): </span>
                 <span className="font-bold text-emerald-700 text-base">KES {commission.toLocaleString()}</span>
                 <span className="text-slate-400 ml-2 text-xs">
                   on KES {Number(form.freightAmount).toLocaleString()}
