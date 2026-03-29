@@ -3,19 +3,20 @@ import { ToastProvider } from './context/ToastContext';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
-import Layout from './components/Layout';
-import Dashboard  from './pages/Dashboard';
-import LoadBoard  from './pages/LoadBoard';
-import PostLoad   from './pages/PostLoad';
-import Carriers   from './pages/Carriers';
-import Shippers   from './pages/Shippers';
-import Tracking   from './pages/Tracking';
-import Finance    from './pages/Finance';
-import Reports    from './pages/Reports';
-import Settings   from './pages/Settings';
-import AIDispatch from './pages/AIDispatch';
-import KnowledgeBase from './pages/KnowledgeBase';
-import Login      from './pages/Login';
+import Layout         from './components/Layout';
+import Dashboard      from './pages/Dashboard';
+import LoadBoard      from './pages/LoadBoard';
+import PostLoad       from './pages/PostLoad';
+import Carriers       from './pages/Carriers';
+import Shippers       from './pages/Shippers';
+import Tracking       from './pages/Tracking';
+import Finance        from './pages/Finance';
+import Reports        from './pages/Reports';
+import Settings       from './pages/Settings';
+import AIDispatch     from './pages/AIDispatch';
+import KnowledgeBase  from './pages/KnowledgeBase';
+import UserManagement from './pages/UserManagement';
+import Login          from './pages/Login';
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -51,6 +52,7 @@ function AppRoutes() {
               <Route path="/settings"  element={<Settings/>}/>
               <Route path="/ai"        element={<AIDispatch/>}/>
               <Route path="/help"      element={<KnowledgeBase/>}/>
+              <Route path="/users"     element={<UserManagement/>}/>
             </Routes>
           </Layout>
         </RequireAuth>

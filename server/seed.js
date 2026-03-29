@@ -3,12 +3,12 @@ const bcrypt = require('bcryptjs');
 function seedDatabase(db) {
   // ── Users ─────────────────────────────────────────────────────────────────
   const users = [
-    { id: 'u1', name: 'Admin User',        email: 'admin@freightlink.co.ke',  password: 'admin123',    role: 'Admin',      avatar: 'AU', market: 'kenya'  },
-    { id: 'u2', name: 'James Dispatcher',  email: 'dispatcher@freightlink.co.ke', password: 'dispatch123', role: 'Dispatcher', avatar: 'JD', market: 'kenya' },
-    { id: 'u3', name: 'Finance Officer',   email: 'finance@freightlink.co.ke',    password: 'finance123',  role: 'Finance',    avatar: 'FO', market: 'kenya' },
-    { id: 'u4', name: 'Raj Patel',         email: 'admin@freightlink.in',     password: 'admin123',    role: 'Admin',      avatar: 'RP', market: 'india'  },
-    { id: 'u5', name: 'Sarah Mitchell',    email: 'admin@freightlink.ca',     password: 'admin123',    role: 'Admin',      avatar: 'SM', market: 'canada' },
-    { id: 'u6', name: 'Mike Johnson',      email: 'admin@freightlink.us',     password: 'admin123',    role: 'Admin',      avatar: 'MJ', market: 'us'     },
+    { id: 'u1', name: 'Admin User',        email: 'admin@freightlink.co.ke',      password: 'admin123',   role: 'admin',      avatar: 'AU', market: 'kenya'  },
+    { id: 'u2', name: 'James Kimani',      email: 'ops@freightlink.co.ke',        password: 'ops123',     role: 'operations', avatar: 'JK', market: 'kenya'  },
+    { id: 'u3', name: 'Aisha Finance',     email: 'finance@freightlink.co.ke',    password: 'finance123', role: 'operations', avatar: 'AF', market: 'kenya'  },
+    { id: 'u4', name: 'Raj Patel',         email: 'admin@freightlink.in',         password: 'admin123',   role: 'admin',      avatar: 'RP', market: 'india'  },
+    { id: 'u5', name: 'Sarah Mitchell',    email: 'admin@freightlink.ca',         password: 'admin123',   role: 'admin',      avatar: 'SM', market: 'canada' },
+    { id: 'u6', name: 'Mike Johnson',      email: 'admin@freightlink.us',         password: 'admin123',   role: 'admin',      avatar: 'MJ', market: 'us'     },
   ];
 
   const insertUser = db.prepare(`

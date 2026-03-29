@@ -16,4 +16,13 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, SECRET };
+// requireRole('admin') or requireRole('admin','operations') — must come after requireAuth
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'Forbidden: insufficient role' });
+    next();
+  };
+}
+
+module.exports = { requireAuth, requireRole, SECRET };

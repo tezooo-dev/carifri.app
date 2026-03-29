@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const { getDb } = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 function parseCarrier(row) {
   if (!row) return null;
@@ -15,8 +15,8 @@ router.get('/', requireAuth, (req, res) => {
   res.json(rows.map(parseCarrier));
 });
 
-// POST /api/carriers
-router.post('/', requireAuth, (req, res) => {
+// POST /api/carriers  — admin only
+router.post('/', requireAuth, requireRole('admin'), (req, res) => {
   const db = getDb();
   const { market, name, contact, phone, email, location, truckTypes, truckCount, rating } = req.body;
   const mkt = market || req.user.market;
@@ -28,14 +28,14 @@ router.post('/', requireAuth, (req, res) => {
   res.status(201).json(parseCarrier(db.prepare('SELECT * FROM carriers WHERE id = ?').get(id)));
 });
 
-// PATCH /api/carriers/:id/verify
-router.patch('/:id/verify', requireAuth, (req, res) => {
+// PATCH /api/carriers/:id/verify  — admin only
+router.patch('/:id/verify', requireAuth, requireRole('admin'), (req, res) => {
   getDb().prepare('UPDATE carriers SET verified = 1 - verified WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 
-// DELETE /api/carriers/:id
-router.delete('/:id', requireAuth, (req, res) => {
+// DELETE /api/carriers/:id  — admin only
+router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
   getDb().prepare('DELETE FROM carriers WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });

@@ -1,33 +1,48 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, LayoutGrid, PlusCircle, Truck, Building2,
-  MapPin, DollarSign, BarChart2, Settings, Menu, X, Bot, LogOut, BookOpen,
+  MapPin, DollarSign, BarChart2, Settings, Menu, X, Bot, LogOut,
+  BookOpen, Users, ShieldCheck, UserCog,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { MARKETS } from '../data/markets';
 import NotificationCenter from './NotificationCenter';
 
-const NAV = [
-  { to: '/',         label: 'Dashboard',    icon: LayoutDashboard },
-  { to: '/loads',    label: 'Load Board',   icon: LayoutGrid      },
-  { to: '/post',     label: 'Post Load',    icon: PlusCircle      },
-  { to: '/carriers', label: 'Carriers',     icon: Truck           },
-  { to: '/shippers', label: 'Shippers',     icon: Building2       },
-  { to: '/tracking', label: 'Tracking',     icon: MapPin          },
-  { to: '/finance',  label: 'Finance',      icon: DollarSign      },
-  { to: '/reports',  label: 'Reports',      icon: BarChart2       },
-  { to: '/ai',       label: 'AI Dispatch',  icon: Bot             },
-  { to: '/help',     label: 'Help & Guides',icon: BookOpen        },
+// All nav items — some are filtered by role below
+const NAV_ALL = [
+  { to: '/',         label: 'Dashboard',       icon: LayoutDashboard, perm: null              },
+  { to: '/loads',    label: 'Load Board',      icon: LayoutGrid,      perm: 'loads.manage'    },
+  { to: '/post',     label: 'Post Load',       icon: PlusCircle,      perm: 'loads.manage'    },
+  { to: '/carriers', label: 'Carriers',        icon: Truck,           perm: 'carriers.view'   },
+  { to: '/shippers', label: 'Shippers',        icon: Building2,       perm: 'shippers.view'   },
+  { to: '/tracking', label: 'Tracking',        icon: MapPin,          perm: 'tracking.view'   },
+  { to: '/finance',  label: 'Finance',         icon: DollarSign,      perm: 'finance.view'    },
+  { to: '/reports',  label: 'Reports',         icon: BarChart2,       perm: 'reports.view'    },
+  { to: '/ai',       label: 'AI Dispatch',     icon: Bot,             perm: 'ai.use'          },
+  { to: '/help',     label: 'Help & Guides',   icon: BookOpen,        perm: 'help.view'       },
 ];
+
+const ROLE_META = {
+  admin:      { label: 'Admin',      color: 'text-blue-400',    icon: ShieldCheck },
+  operations: { label: 'Operations', color: 'text-emerald-400', icon: UserCog     },
+};
 
 export default function Layout({ children }) {
   const [open, setOpen] = useState(false);
   const { stats, settings, loadingData } = useApp();
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  const { can, role }    = usePermissions();
+  const navigate         = useNavigate();
   const mkt = MARKETS[settings.market] || MARKETS.kenya;
+
+  const roleMeta = ROLE_META[role] || ROLE_META.operations;
+  const RoleIcon = roleMeta.icon;
+
+  // Filter nav by permission
+  const nav = NAV_ALL.filter(item => !item.perm || can(item.perm));
 
   async function handleLogout() {
     await logout();
@@ -73,7 +88,7 @@ export default function Layout({ children }) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {nav.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} end={to==='/'} onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -84,23 +99,41 @@ export default function Layout({ children }) {
           ))}
         </nav>
 
-        {/* Bottom: Settings + user */}
+        {/* Bottom: User Management (admin) + Settings + user card */}
         <div className="px-2 py-3 border-t border-slate-700/60 space-y-0.5">
-          <NavLink to="/settings" onClick={() => setOpen(false)}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}>
-            <Settings size={17}/> Settings
-          </NavLink>
+          {/* User Management — admin only */}
+          {can('users.manage') && (
+            <NavLink to="/users" onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}>
+              <Users size={17}/> User Management
+            </NavLink>
+          )}
+
+          {/* Settings — admin only */}
+          {can('settings.edit') && (
+            <NavLink to="/settings" onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}>
+              <Settings size={17}/> Settings
+            </NavLink>
+          )}
+
+          {/* User card */}
           {user && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg">
+            <div className="flex items-center gap-2 px-3 py-2 mt-1 rounded-lg bg-slate-800/60">
               <div className="w-7 h-7 bg-blue-500 rounded-full flex items-center justify-center text-xs font-bold shrink-0">
-                {user.avatar}
+                {user.avatar || user.name?.slice(0,2).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium text-white truncate">{user.name}</div>
-                <div className="text-xs text-slate-400">{user.role}</div>
+                <div className={`text-xs flex items-center gap-1 ${roleMeta.color}`}>
+                  <RoleIcon size={9}/> {roleMeta.label}
+                </div>
               </div>
               <button onClick={handleLogout} title="Log out" className="text-slate-400 hover:text-red-400 shrink-0">
                 <LogOut size={15}/>
@@ -142,10 +175,12 @@ export default function Layout({ children }) {
             <span>{mkt.symbol} {stats.receivedCommission.toLocaleString()} earned</span>
           </div>
           <NotificationCenter/>
-          <button onClick={() => navigate('/post')}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700">
-            <PlusCircle size={13}/> Post Load
-          </button>
+          {can('loads.manage') && (
+            <button onClick={() => navigate('/post')}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700">
+              <PlusCircle size={13}/> Post Load
+            </button>
+          )}
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>

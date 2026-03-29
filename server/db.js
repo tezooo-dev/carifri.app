@@ -134,6 +134,12 @@ function initDb() {
   safeAlter("ALTER TABLE carriers ADD COLUMN edi_config TEXT DEFAULT '{}'");
   safeAlter("ALTER TABLE carriers ADD COLUMN contacts   TEXT DEFAULT '[]'");
 
+  // Role migration: normalize legacy role values to admin / operations
+  try {
+    db.prepare("UPDATE users SET role = 'admin'      WHERE role = 'Admin'").run();
+    db.prepare("UPDATE users SET role = 'operations' WHERE role IN ('Dispatcher','Finance','Manager','Viewer')").run();
+  } catch {}
+
   return db;
 }
 

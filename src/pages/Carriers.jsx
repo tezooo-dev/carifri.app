@@ -5,6 +5,7 @@ import {
   AlertTriangle, Building2, Globe, ClipboardList,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { usePermissions } from '../hooks/usePermissions';
 import { MARKETS } from '../data/markets';
 import api from '../lib/api';
 
@@ -508,6 +509,7 @@ function CarrierDetailDrawer({ carrier: initialCarrier, loads, onClose }) {
 
 export default function Carriers() {
   const { carriers, loads, settings, addCarrier, toggleVerifyCarrier, removeCarrier } = useApp();
+  const { can } = usePermissions();
   const [showAdd,  setShowAdd]  = useState(false);
   const [selected, setSelected] = useState(null);
   const [search,   setSearch]   = useState('');
@@ -533,10 +535,12 @@ export default function Carriers() {
             {mkt.flag} {mkt.name} · {carriers.length} carriers · {verified} verified
           </p>
         </div>
-        <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700">
-          <Plus size={15}/> Add Carrier
-        </button>
+        {can('carriers.create') && (
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700">
+            <Plus size={15}/> Add Carrier
+          </button>
+        )}
       </div>
 
       {/* Summary stats */}
@@ -623,15 +627,19 @@ export default function Carriers() {
                   className="flex-1 text-xs py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium flex items-center justify-center gap-1">
                   <Edit3 size={11}/> Manage
                 </button>
-                <button onClick={() => toggleVerifyCarrier(c.id)}
-                  className={`flex-1 text-xs py-1.5 rounded-lg font-medium flex items-center justify-center gap-1 ${
-                    c.verified ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
-                  <CheckCircle size={11}/> {c.verified ? 'Unverify' : 'Verify'}
-                </button>
-                <button onClick={() => removeCarrier(c.id)}
-                  className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg">
-                  <Trash2 size={13}/>
-                </button>
+                {can('carriers.verify') && (
+                  <button onClick={() => toggleVerifyCarrier(c.id)}
+                    className={`flex-1 text-xs py-1.5 rounded-lg font-medium flex items-center justify-center gap-1 ${
+                      c.verified ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+                    <CheckCircle size={11}/> {c.verified ? 'Unverify' : 'Verify'}
+                  </button>
+                )}
+                {can('carriers.delete') && (
+                  <button onClick={() => removeCarrier(c.id)}
+                    className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg">
+                    <Trash2 size={13}/>
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -642,11 +650,11 @@ export default function Carriers() {
         <div className="text-center py-12 text-slate-400">
           <Truck size={36} className="mx-auto mb-3 opacity-30"/>
           <p className="font-medium">{search ? `No carriers matching "${search}"` : 'No carriers yet'}</p>
-          <button onClick={() => setShowAdd(true)} className="text-blue-600 text-sm mt-2 hover:underline">Add your first carrier</button>
+          {can('carriers.create') && <button onClick={() => setShowAdd(true)} className="text-blue-600 text-sm mt-2 hover:underline">Add your first carrier</button>}
         </div>
       )}
 
-      {showAdd && <AddCarrierModal onClose={() => setShowAdd(false)} onSave={addCarrier} market={settings.market}/>}
+      {showAdd && can('carriers.create') && <AddCarrierModal onClose={() => setShowAdd(false)} onSave={addCarrier} market={settings.market}/>}
       {selected && (
         <CarrierDetailDrawer
           carrier={selected}
