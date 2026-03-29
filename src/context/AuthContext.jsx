@@ -1,63 +1,55 @@
-import { createContext, useContext, useState, useCallback } from 'react';
-import { useLocalStorage } from '../hooks/useLocalStorage';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import api, { setAccessToken, getAccessToken } from '../lib/api';
 
 const AuthContext = createContext(null);
 
-// Demo users — in production replace with real auth (JWT, OAuth, etc.)
-const USERS = [
-  {
-    id: 'u1',
-    name: 'Admin User',
-    email: 'admin@freightlink.co.ke',
-    password: 'admin123',
-    role: 'Admin',
-    avatar: 'AU',
-  },
-  {
-    id: 'u2',
-    name: 'James Dispatcher',
-    email: 'dispatcher@freightlink.co.ke',
-    password: 'dispatch123',
-    role: 'Dispatcher',
-    avatar: 'JD',
-  },
-  {
-    id: 'u3',
-    name: 'Finance Officer',
-    email: 'finance@freightlink.co.ke',
-    password: 'finance123',
-    role: 'Finance',
-    avatar: 'FO',
-  },
-];
-
 export function AuthProvider({ children }) {
-  const [session, setSession] = useLocalStorage('fl_session', null);
-  const [error, setError] = useState('');
+  const [user,    setUser]    = useState(null);
+  const [loading, setLoading] = useState(true); // restoring session
+  const [error,   setError]   = useState('');
 
-  const user = session ? USERS.find(u => u.id === session.userId) : null;
+  // On mount: try to restore session from stored refresh token
+  useEffect(() => {
+    const rt = localStorage.getItem('fl_refresh');
+    if (!rt) { setLoading(false); return; }
 
-  function login(email, password) {
-    const found = USERS.find(
-      u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
-    if (!found) {
-      setError('Invalid email or password.');
+    api.post('/auth/refresh', { refreshToken: rt })
+      .then(({ data }) => {
+        setAccessToken(data.accessToken);
+        setUser(data.user);
+      })
+      .catch(() => {
+        localStorage.removeItem('fl_refresh');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function login(email, password) {
+    setError('');
+    try {
+      const { data } = await api.post('/auth/login', { email, password });
+      setAccessToken(data.accessToken);
+      localStorage.setItem('fl_refresh', data.refreshToken);
+      setUser(data.user);
+      return true;
+    } catch (err) {
+      setError(err.response?.data?.error || 'Login failed. Please try again.');
       return false;
     }
-    setSession({ userId: found.id, loginTime: Date.now() });
-    setError('');
-    return true;
   }
 
-  function logout() {
-    setSession(null);
+  async function logout() {
+    const rt = localStorage.getItem('fl_refresh');
+    try { await api.post('/auth/logout', { refreshToken: rt }); } catch {}
+    localStorage.removeItem('fl_refresh');
+    setAccessToken(null);
+    setUser(null);
   }
 
   const clearError = useCallback(() => setError(''), []);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, error, clearError, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, login, logout, error, clearError, loading, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

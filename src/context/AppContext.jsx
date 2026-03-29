@@ -1,167 +1,170 @@
-import { createContext, useContext } from 'react';
-import { initialLoads, initialCarriers, initialShippers } from '../data/store';
-import { useLocalStorage } from '../hooks/useLocalStorage';
-import { useToast } from './ToastContext';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import api from '../lib/api';
+import { useAuth } from './AuthContext';
 import { useNotifications } from './NotificationContext';
 
 const AppContext = createContext(null);
 
 const DEFAULT_SETTINGS = {
-  companyName: 'FreightLink Brokerage',
-  companyPhone: '+254 700 000 000',
-  companyEmail: 'ops@freightlink.co.ke',
-  commissionRate: 8,   // percent
-  currency: 'KES',
-  country: 'Kenya',
+  companyName: 'FreightLink Brokerage', companyPhone: '', companyEmail: '',
+  commissionRate: 8, currency: 'KES', country: 'Kenya', market: 'kenya',
 };
 
 export function AppProvider({ children }) {
-  const toast = useToast();
+  const { user, isAuthenticated } = useAuth();
   const { push: notify } = useNotifications();
-  const [loads,    setLoads]    = useLocalStorage('fl_loads',    initialLoads);
-  const [carriers, setCarriers] = useLocalStorage('fl_carriers', initialCarriers);
-  const [shippers, setShippers] = useLocalStorage('fl_shippers', initialShippers);
-  const [settings, setSettings] = useLocalStorage('fl_settings', DEFAULT_SETTINGS);
 
-  const rate = (settings.commissionRate ?? 8) / 100;
+  const [loads,       setLoads]       = useState([]);
+  const [carriers,    setCarriers]    = useState([]);
+  const [shippers,    setShippers]    = useState([]);
+  const [settings,    setSettings]    = useState(DEFAULT_SETTINGS);
+  const [loadingData, setLoadingData] = useState(false);
 
-  function addLoad(load) {
+  const market = settings.market || user?.market || 'kenya';
+
+  // ── Fetch all data for the active market ─────────────────────────────────────
+  const fetchAll = useCallback(async (mkt) => {
+    if (!isAuthenticated) return;
+    setLoadingData(true);
+    try {
+      const [l, c, s, st] = await Promise.all([
+        api.get(`/loads?market=${mkt}`),
+        api.get(`/carriers?market=${mkt}`),
+        api.get(`/shippers?market=${mkt}`),
+        api.get('/settings'),
+      ]);
+      setLoads(l.data);
+      setCarriers(c.data);
+      setShippers(s.data);
+      setSettings({
+        companyName:    st.data.company_name    ?? DEFAULT_SETTINGS.companyName,
+        companyPhone:   st.data.company_phone   ?? '',
+        companyEmail:   st.data.company_email   ?? '',
+        commissionRate: st.data.commission_rate ?? 8,
+        currency:       st.data.currency        ?? 'KES',
+        country:        st.data.country         ?? 'Kenya',
+        market:         st.data.market          ?? 'kenya',
+      });
+    } catch (err) {
+      console.error('AppContext fetchAll:', err);
+    } finally {
+      setLoadingData(false);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated) fetchAll(user?.market || 'kenya');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  // ── Load mutations ────────────────────────────────────────────────────────────
+  async function addLoad(data) {
+    const { data: load } = await api.post('/loads', { ...data, market });
     setLoads(prev => [load, ...prev]);
-    setShippers(prev =>
-      prev.map(s =>
-        s.id === load.shipperId
-          ? { ...s, totalLoads: s.totalLoads + 1, totalSpend: s.totalSpend + load.freightAmount }
-          : s
-      )
-    );
-    toast(`Load ${load.id} posted — ${load.origin} → ${load.destination}`, 'success');
-    notify('New Load Posted', `${load.id}: ${load.origin} → ${load.destination} | ${load.commodity}`, 'success');
+    notify('New Load Posted', `${load.origin} → ${load.destination}`, 'success');
   }
 
-  function updateLoad(id, changes) {
-    setLoads(prev => prev.map(l => (l.id === id ? { ...l, ...changes } : l)));
+  async function assignCarrier(loadId, carrierId) {
+    const { data: load } = await api.patch(`/loads/${loadId}/assign`, { carrierId });
+    setLoads(prev => prev.map(l => l.id === loadId ? load : l));
+    const c = carriers.find(c => c.id === carrierId);
+    notify('Carrier Assigned', c?.name ?? 'Carrier assigned', 'success');
   }
 
-  function assignCarrier(loadId, carrierId) {
-    const now = new Date().toLocaleString('en-KE', { hour12: false }).replace(',', '');
-    const carrier = carriers.find(c => c.id === carrierId);
-    setLoads(prev =>
-      prev.map(l => {
-        if (l.id !== loadId) return l;
-        return {
-          ...l,
-          carrierId,
-          status: 'Booked',
-          timeline: l.timeline.map(t =>
-            t.event === 'Carrier Assigned' ? { ...t, time: now, done: true } : t
-          ),
-        };
-      })
-    );
-    setCarriers(prev =>
-      prev.map(c => (c.id === carrierId ? { ...c, totalLoads: c.totalLoads + 1 } : c))
-    );
-    toast(`${carrier?.name ?? 'Carrier'} assigned to ${loadId}`, 'success');
-    notify('Carrier Assigned', `${carrier?.name ?? 'Carrier'} assigned to load ${loadId}`, 'success');
+  async function markPickedUp(loadId) {
+    const { data: load } = await api.patch(`/loads/${loadId}/pickup`);
+    setLoads(prev => prev.map(l => l.id === loadId ? load : l));
+    notify('Shipment Picked Up', `Load ${loadId} is now in transit`, 'info');
   }
 
-  function markPickedUp(loadId) {
-    const now = new Date().toLocaleString('en-KE', { hour12: false }).replace(',', '');
-    setLoads(prev =>
-      prev.map(l => {
-        if (l.id !== loadId) return l;
-        return {
-          ...l,
-          status: 'In Transit',
-          timeline: l.timeline.map(t => {
-            if (t.event === 'Picked Up')  return { ...t, time: now, done: true };
-            if (t.event === 'In Transit') return { ...t, time: now, done: true };
-            return t;
-          }),
-        };
-      })
-    );
-    toast(`${loadId} picked up — now In Transit`, 'success');
-    notify('Shipment Picked Up', `Load ${loadId} is now In Transit`, 'info');
+  async function markDelivered(loadId) {
+    const { data: load } = await api.patch(`/loads/${loadId}/deliver`);
+    setLoads(prev => prev.map(l => l.id === loadId ? load : l));
+    notify('Load Delivered ✓', `Load ${loadId} delivered successfully`, 'success');
   }
 
-  function markDelivered(loadId) {
-    const now = new Date().toLocaleString('en-KE', { hour12: false }).replace(',', '');
-    const load = loads.find(l => l.id === loadId);
-    setLoads(prev =>
-      prev.map(l => {
-        if (l.id !== loadId) return l;
-        return {
-          ...l,
-          status: 'Delivered',
-          timeline: l.timeline.map(t =>
-            t.event === 'Delivered' ? { ...t, time: now, done: true } : t
-          ),
-        };
-      })
-    );
-    const commStr = `${settings.currency} ${load?.commission?.toLocaleString() ?? ''}`;
-    toast(`${loadId} delivered — ${commStr} commission pending`, 'success');
-    notify('Load Delivered ✓', `${loadId} delivered. Commission ${commStr} is now pending collection.`, 'success');
-  }
-
-  function cancelLoad(loadId) {
-    setLoads(prev => prev.map(l => (l.id === loadId ? { ...l, status: 'Cancelled' } : l)));
-    toast(`Load ${loadId} cancelled`, 'error');
+  async function cancelLoad(loadId) {
+    await api.patch(`/loads/${loadId}/cancel`);
+    setLoads(prev => prev.map(l => l.id === loadId ? { ...l, status: 'Cancelled' } : l));
     notify('Load Cancelled', `Load ${loadId} has been cancelled`, 'error');
   }
 
-  function markCommissionReceived(loadId) {
-    const load = loads.find(l => l.id === loadId);
-    setLoads(prev =>
-      prev.map(l => (l.id === loadId ? { ...l, commissionReceived: true } : l))
-    );
-    const commAmt = `${settings.currency} ${load?.commission?.toLocaleString() ?? ''}`;
-    toast(`Commission ${commAmt} received for ${loadId}`, 'success');
-    notify('Commission Received 💰', `${commAmt} commission collected for load ${loadId}`, 'success');
+  async function markCommissionReceived(loadId) {
+    const { data: load } = await api.patch(`/loads/${loadId}/commission`);
+    setLoads(prev => prev.map(l => l.id === loadId ? load : l));
+    notify('Commission Received 💰', `Commission for ${loadId} marked as received`, 'success');
   }
 
-  function addCarrier(carrier) {
-    setCarriers(prev => [carrier, ...prev]);
-    toast(`${carrier.name} added to your network`, 'success');
+  // ── Carrier mutations ─────────────────────────────────────────────────────────
+  async function addCarrier(data) {
+    const { data: carrier } = await api.post('/carriers', { ...data, market });
+    setCarriers(prev => [...prev, carrier]);
   }
 
-  function updateCarrierVerification(carrierId, verified) {
-    setCarriers(prev =>
-      prev.map(c => (c.id === carrierId ? { ...c, verified } : c))
-    );
-    toast(verified ? 'Carrier verified' : 'Verification removed', 'info');
+  async function toggleVerifyCarrier(carrierId) {
+    await api.patch(`/carriers/${carrierId}/verify`);
+    setCarriers(prev => prev.map(c =>
+      c.id === carrierId ? { ...c, verified: !c.verified } : c
+    ));
   }
 
-  function updateSettings(changes) {
-    setSettings(prev => ({ ...prev, ...changes }));
-    toast('Settings saved', 'success');
+  async function removeCarrier(carrierId) {
+    await api.delete(`/carriers/${carrierId}`);
+    setCarriers(prev => prev.filter(c => c.id !== carrierId));
   }
 
-  function resetData() {
-    setLoads(initialLoads);
-    setCarriers(initialCarriers);
-    setShippers(initialShippers);
-    toast('Demo data restored', 'info');
+  // ── Shipper mutations ─────────────────────────────────────────────────────────
+  async function addShipper(data) {
+    const { data: shipper } = await api.post('/shippers', { ...data, market });
+    setShippers(prev => [...prev, shipper]);
   }
 
+  async function removeShipper(shipperId) {
+    await api.delete(`/shippers/${shipperId}`);
+    setShippers(prev => prev.filter(s => s.id !== shipperId));
+  }
+
+  // ── Settings ──────────────────────────────────────────────────────────────────
+  async function saveSettings(updates) {
+    const { data } = await api.put('/settings', updates);
+    const next = {
+      companyName:    data.company_name,
+      companyPhone:   data.company_phone,
+      companyEmail:   data.company_email,
+      commissionRate: data.commission_rate,
+      currency:       data.currency,
+      country:        data.country,
+      market:         data.market,
+    };
+    setSettings(next);
+    if (updates.market && updates.market !== market) {
+      await fetchAll(updates.market);
+    }
+    notify('Settings Saved', 'Company settings updated', 'success');
+  }
+
+  // ── Computed stats ────────────────────────────────────────────────────────────
+  const activeMkt = loads.filter(l => l.status !== 'Cancelled');
   const stats = {
-    totalLoads: loads.length,
-    activeLoads: loads.filter(l => ['Available', 'Booked', 'In Transit'].includes(l.status)).length,
-    totalCommission: loads.filter(l => l.status !== 'Cancelled').reduce((sum, l) => sum + l.commission, 0),
-    receivedCommission: loads.filter(l => l.commissionReceived).reduce((sum, l) => sum + l.commission, 0),
-    pendingCommission: loads
-      .filter(l => !l.commissionReceived && l.status !== 'Cancelled')
-      .reduce((sum, l) => sum + l.commission, 0),
-    totalFreight: loads.filter(l => l.status !== 'Cancelled').reduce((sum, l) => sum + l.freightAmount, 0),
+    totalLoads:         activeMkt.length,
+    activeLoads:        loads.filter(l => ['Booked','In Transit'].includes(l.status)).length,
+    availableLoads:     loads.filter(l => l.status === 'Available').length,
+    totalCarriers:      carriers.length,
+    verifiedCarriers:   carriers.filter(c => c.verified).length,
+    totalCommission:    activeMkt.reduce((s, l) => s + (l.commission || 0), 0),
+    receivedCommission: loads.filter(l => l.commissionReceived).reduce((s, l) => s + (l.commission || 0), 0),
+    pendingCommission:  loads.filter(l => !l.commissionReceived && l.status !== 'Cancelled')
+                             .reduce((s, l) => s + (l.commission || 0), 0),
   };
+
+  const rate = (settings.commissionRate || 8) / 100;
 
   return (
     <AppContext.Provider value={{
-      loads, carriers, shippers, stats, settings, rate,
-      addLoad, updateLoad, assignCarrier, markPickedUp, markDelivered,
-      cancelLoad, markCommissionReceived, addCarrier, updateCarrierVerification,
-      updateSettings, resetData,
+      loads, carriers, shippers, settings, stats, rate, market, loadingData,
+      addLoad, assignCarrier, markPickedUp, markDelivered, cancelLoad,
+      markCommissionReceived, addCarrier, toggleVerifyCarrier, removeCarrier,
+      addShipper, removeShipper, saveSettings, fetchAll,
     }}>
       {children}
     </AppContext.Provider>
