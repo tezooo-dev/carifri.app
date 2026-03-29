@@ -3,20 +3,25 @@ import { ToastProvider } from './context/ToastContext';
 import { AppProvider } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
-import Layout         from './components/Layout';
-import Dashboard      from './pages/Dashboard';
-import LoadBoard      from './pages/LoadBoard';
-import PostLoad       from './pages/PostLoad';
-import Carriers       from './pages/Carriers';
-import Shippers       from './pages/Shippers';
-import Tracking       from './pages/Tracking';
-import Finance        from './pages/Finance';
-import Reports        from './pages/Reports';
-import Settings       from './pages/Settings';
-import AIDispatch     from './pages/AIDispatch';
-import KnowledgeBase  from './pages/KnowledgeBase';
-import UserManagement from './pages/UserManagement';
-import Login          from './pages/Login';
+import Layout          from './components/Layout';
+import OnboardingWizard, { useOnboarding } from './components/OnboardingWizard';
+import Dashboard       from './pages/Dashboard';
+import LoadBoard       from './pages/LoadBoard';
+import PostLoad        from './pages/PostLoad';
+import Carriers        from './pages/Carriers';
+import Shippers        from './pages/Shippers';
+import Tracking        from './pages/Tracking';
+import Finance         from './pages/Finance';
+import Reports         from './pages/Reports';
+import Settings        from './pages/Settings';
+import AIDispatch      from './pages/AIDispatch';
+import KnowledgeBase   from './pages/KnowledgeBase';
+import UserManagement  from './pages/UserManagement';
+import Landing         from './pages/Landing';
+import UserGuide       from './pages/UserGuide';
+import PrivacyPolicy   from './pages/PrivacyPolicy';
+import TermsOfService  from './pages/TermsOfService';
+import Login           from './pages/Login';
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -33,28 +38,56 @@ function RequireAuth({ children }) {
   return children;
 }
 
+/** Wraps authenticated pages and shows onboarding wizard on first login */
+function AuthenticatedLayout({ children }) {
+  const { show, dismiss } = useOnboarding();
+  return (
+    <>
+      <Layout>{children}</Layout>
+      {show && <OnboardingWizard onClose={dismiss}/>}
+    </>
+  );
+}
+
+/** Root route: landing for guests, dashboard for logged-in users */
+function RootRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user) return <Navigate to="/dashboard" replace/>;
+  return <Landing/>;
+}
+
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<Login/>}/>
+      {/* Public routes */}
+      <Route path="/"        element={<RootRoute/>}/>
+      <Route path="/login"   element={<Login/>}/>
+      <Route path="/guide"   element={<UserGuide/>}/>
+      <Route path="/privacy" element={<PrivacyPolicy/>}/>
+      <Route path="/terms"   element={<TermsOfService/>}/>
+
+      {/* Protected app routes */}
       <Route path="/*" element={
         <RequireAuth>
-          <Layout>
+          <AuthenticatedLayout>
             <Routes>
-              <Route path="/"          element={<Dashboard/>}/>
-              <Route path="/loads"     element={<LoadBoard/>}/>
-              <Route path="/post"      element={<PostLoad/>}/>
-              <Route path="/carriers"  element={<Carriers/>}/>
-              <Route path="/shippers"  element={<Shippers/>}/>
-              <Route path="/tracking"  element={<Tracking/>}/>
-              <Route path="/finance"   element={<Finance/>}/>
-              <Route path="/reports"   element={<Reports/>}/>
-              <Route path="/settings"  element={<Settings/>}/>
-              <Route path="/ai"        element={<AIDispatch/>}/>
-              <Route path="/help"      element={<KnowledgeBase/>}/>
-              <Route path="/users"     element={<UserManagement/>}/>
+              <Route path="/dashboard"  element={<Dashboard/>}/>
+              <Route path="/loads"      element={<LoadBoard/>}/>
+              <Route path="/post"       element={<PostLoad/>}/>
+              <Route path="/carriers"   element={<Carriers/>}/>
+              <Route path="/shippers"   element={<Shippers/>}/>
+              <Route path="/tracking"   element={<Tracking/>}/>
+              <Route path="/finance"    element={<Finance/>}/>
+              <Route path="/reports"    element={<Reports/>}/>
+              <Route path="/settings"   element={<Settings/>}/>
+              <Route path="/ai"         element={<AIDispatch/>}/>
+              <Route path="/help"       element={<KnowledgeBase/>}/>
+              <Route path="/users"      element={<UserManagement/>}/>
+              {/* Legacy redirect — old "/" links now go to /dashboard */}
+              <Route path="/"           element={<Navigate to="/dashboard" replace/>}/>
             </Routes>
-          </Layout>
+          </AuthenticatedLayout>
         </RequireAuth>
       }/>
     </Routes>

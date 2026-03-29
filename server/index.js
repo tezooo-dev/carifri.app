@@ -14,6 +14,7 @@ const settingsRouter       = require('./routes/settings');
 const marketsRouter        = require('./routes/markets');
 const bidsRouter           = require('./routes/bids');
 const usersRouter          = require('./routes/users');
+const analyticsRouter      = require('./routes/analytics');
 
 const app  = express();
 const PORT = process.env.API_PORT || 3001;
@@ -31,6 +32,7 @@ app.use('/api/settings',        settingsRouter);
 app.use('/api/markets',         marketsRouter);
 app.use('/api/bids',            bidsRouter);
 app.use('/api/users',           usersRouter);
+app.use('/api/analytics',       analyticsRouter);
 app.get('/api/health',          (_, res) => res.json({ status: 'ok', version: '2.0.0' }));
 
 // ── Start ──────────────────────────────────────────────────────────────────────

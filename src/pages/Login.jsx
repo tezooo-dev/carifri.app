@@ -1,27 +1,35 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Truck, Eye, EyeOff, LogIn } from 'lucide-react';
 
 const DEMO_ACCOUNTS = [
-  { label: 'Admin',      email: 'admin@freightlink.co.ke',      password: 'admin123'    },
-  { label: 'Dispatcher', email: 'dispatcher@freightlink.co.ke', password: 'dispatch123' },
-  { label: 'Finance',    email: 'finance@freightlink.co.ke',    password: 'finance123'  },
+  { label: '🔵 Admin',      email: 'admin@freightlink.co.ke', password: 'admin123' },
+  { label: '🟢 Operations', email: 'ops@freightlink.co.ke',   password: 'ops123'   },
 ];
 
 export default function Login() {
-  const { login, error } = useAuth();
+  const { login, error, user } = useAuth();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const from      = location.state?.from?.pathname || '/dashboard';
+
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [showPw,   setShowPw]   = useState(false);
   const [loading,  setLoading]  = useState(false);
 
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) navigate(from, { replace: true });
+  }, [user, navigate, from]);
+
   async function handleSubmit(e) {
     e.preventDefault();
     setLoading(true);
-    // slight delay for UX feel
-    await new Promise(r => setTimeout(r, 400));
-    login(email, password);
+    const ok = await login(email, password);
     setLoading(false);
+    if (ok) navigate(from, { replace: true });
   }
 
   function fillDemo(acc) {
@@ -34,11 +42,13 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-xl shadow-blue-900/50">
-            <Truck size={30} className="text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white">FreightLink</h1>
-          <p className="text-slate-400 mt-1 text-sm">Brokerage Operations Platform</p>
+          <Link to="/" className="inline-flex flex-col items-center gap-2 group">
+            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-900/50 group-hover:bg-blue-500 transition-colors">
+              <Truck size={30} className="text-white"/>
+            </div>
+            <h1 className="text-3xl font-bold text-white">FreightLink</h1>
+          </Link>
+          <p className="text-slate-400 mt-1 text-sm">Enterprise Transport Management System</p>
         </div>
 
         {/* Card */}
@@ -55,46 +65,28 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email address</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="you@freightlink.co.ke"
-                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"/>
             </div>
-
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Password</label>
               <div className="relative">
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
+                <input type={showPw ? 'text' : 'password'} required value={password} onChange={e => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPw(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"/>
+                <button type="button" onClick={() => setShowPw(s => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  {showPw ? <EyeOff size={16}/> : <Eye size={16}/>}
                 </button>
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-            >
+            <button type="submit" disabled={loading}
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
               {loading
-                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                : <LogIn size={16} />
-              }
+                ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
+                : <LogIn size={16}/>}
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
@@ -102,27 +94,30 @@ export default function Login() {
           {/* Demo accounts */}
           <div className="mt-6 pt-5 border-t border-slate-100">
             <p className="text-xs text-slate-400 font-medium mb-3 text-center">Quick demo access</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {DEMO_ACCOUNTS.map(acc => (
-                <button
-                  key={acc.label}
-                  type="button"
-                  onClick={() => fillDemo(acc)}
-                  className="py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
-                >
+                <button key={acc.label} type="button" onClick={() => fillDemo(acc)}
+                  className="py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors">
                   {acc.label}
                 </button>
               ))}
             </div>
             <p className="text-xs text-slate-400 text-center mt-2">
-              Click a role above to fill credentials, then sign in.
+              Click a role to fill credentials, then sign in.
             </p>
           </div>
         </div>
 
-        <p className="text-center text-slate-500 text-xs mt-6">
-          FreightLink MVP · Kenya Edition
-        </p>
+        <div className="text-center mt-6 space-y-2">
+          <p className="text-slate-500 text-xs">
+            <Link to="/privacy" className="hover:text-slate-300 transition-colors">Privacy Policy</Link>
+            {' · '}
+            <Link to="/terms"   className="hover:text-slate-300 transition-colors">Terms of Service</Link>
+            {' · '}
+            <Link to="/guide"   className="hover:text-slate-300 transition-colors">User Guide</Link>
+          </p>
+          <p className="text-slate-600 text-xs">© {new Date().getFullYear()} FreightLink TMS</p>
+        </div>
       </div>
     </div>
   );

@@ -125,6 +125,27 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_loads_status  ON loads(status);
     CREATE INDEX IF NOT EXISTS idx_carriers_market ON carriers(market);
     CREATE INDEX IF NOT EXISTS idx_shippers_market ON shippers(market);
+
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    TEXT NOT NULL DEFAULT '',
+      market     TEXT NOT NULL DEFAULT 'kenya',
+      event      TEXT NOT NULL,
+      category   TEXT NOT NULL DEFAULT 'general',
+      meta       TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_analytics_event  ON analytics_events(event);
+    CREATE INDEX IF NOT EXISTS idx_analytics_market ON analytics_events(market);
+    CREATE INDEX IF NOT EXISTS idx_analytics_ts     ON analytics_events(created_at);
+
+    CREATE TABLE IF NOT EXISTS onboarding (
+      user_id    TEXT PRIMARY KEY,
+      step       INTEGER DEFAULT 0,
+      completed  INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // Safe migrations: add columns that may not exist yet

@@ -8,21 +8,22 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
+import { usePageTracking } from '../hooks/useAnalytics';
 import { MARKETS } from '../data/markets';
 import NotificationCenter from './NotificationCenter';
 
 // All nav items — some are filtered by role below
 const NAV_ALL = [
-  { to: '/',         label: 'Dashboard',       icon: LayoutDashboard, perm: null              },
-  { to: '/loads',    label: 'Load Board',      icon: LayoutGrid,      perm: 'loads.manage'    },
-  { to: '/post',     label: 'Post Load',       icon: PlusCircle,      perm: 'loads.manage'    },
-  { to: '/carriers', label: 'Carriers',        icon: Truck,           perm: 'carriers.view'   },
-  { to: '/shippers', label: 'Shippers',        icon: Building2,       perm: 'shippers.view'   },
-  { to: '/tracking', label: 'Tracking',        icon: MapPin,          perm: 'tracking.view'   },
-  { to: '/finance',  label: 'Finance',         icon: DollarSign,      perm: 'finance.view'    },
-  { to: '/reports',  label: 'Reports',         icon: BarChart2,       perm: 'reports.view'    },
-  { to: '/ai',       label: 'AI Dispatch',     icon: Bot,             perm: 'ai.use'          },
-  { to: '/help',     label: 'Help & Guides',   icon: BookOpen,        perm: 'help.view'       },
+  { to: '/dashboard', label: 'Dashboard',       icon: LayoutDashboard, perm: null              },
+  { to: '/loads',     label: 'Load Board',      icon: LayoutGrid,      perm: 'loads.manage'    },
+  { to: '/post',      label: 'Post Load',       icon: PlusCircle,      perm: 'loads.manage'    },
+  { to: '/carriers',  label: 'Carriers',        icon: Truck,           perm: 'carriers.view'   },
+  { to: '/shippers',  label: 'Shippers',        icon: Building2,       perm: 'shippers.view'   },
+  { to: '/tracking',  label: 'Tracking',        icon: MapPin,          perm: 'tracking.view'   },
+  { to: '/finance',   label: 'Finance',         icon: DollarSign,      perm: 'finance.view'    },
+  { to: '/reports',   label: 'Reports',         icon: BarChart2,       perm: 'reports.view'    },
+  { to: '/ai',        label: 'AI Dispatch',     icon: Bot,             perm: 'ai.use'          },
+  { to: '/help',      label: 'Help & Guides',   icon: BookOpen,        perm: 'help.view'       },
 ];
 
 const ROLE_META = {
@@ -36,6 +37,7 @@ export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const { can, role }    = usePermissions();
   const navigate         = useNavigate();
+  usePageTracking(); // auto-fires page_view on every route change
   const mkt = MARKETS[settings.market] || MARKETS.kenya;
 
   const roleMeta = ROLE_META[role] || ROLE_META.operations;
@@ -89,7 +91,7 @@ export default function Layout({ children }) {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
           {nav.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} end={to==='/'} onClick={() => setOpen(false)}
+            <NavLink key={to} to={to} end={to==='/dashboard'} onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
