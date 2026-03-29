@@ -105,11 +105,34 @@ function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+
+    CREATE TABLE IF NOT EXISTS load_bids (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      load_id     TEXT NOT NULL,
+      carrier_id  TEXT NOT NULL,
+      amount      REAL NOT NULL,
+      eta_hours   REAL,
+      notes       TEXT DEFAULT '',
+      status      TEXT DEFAULT 'pending',
+      created_at  TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (load_id)    REFERENCES loads(id)    ON DELETE CASCADE,
+      FOREIGN KEY (carrier_id) REFERENCES carriers(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_bids_load    ON load_bids(load_id);
+    CREATE INDEX IF NOT EXISTS idx_bids_carrier ON load_bids(carrier_id);
     CREATE INDEX IF NOT EXISTS idx_loads_market  ON loads(market);
     CREATE INDEX IF NOT EXISTS idx_loads_status  ON loads(status);
     CREATE INDEX IF NOT EXISTS idx_carriers_market ON carriers(market);
     CREATE INDEX IF NOT EXISTS idx_shippers_market ON shippers(market);
   `);
+
+  // Safe migrations: add columns that may not exist yet
+  const safeAlter = (sql) => { try { db.prepare(sql).run(); } catch {} };
+  safeAlter("ALTER TABLE carriers ADD COLUMN contracts  TEXT DEFAULT '[]'");
+  safeAlter("ALTER TABLE carriers ADD COLUMN insurance  TEXT DEFAULT '{}'");
+  safeAlter("ALTER TABLE carriers ADD COLUMN edi_config TEXT DEFAULT '{}'");
+  safeAlter("ALTER TABLE carriers ADD COLUMN contacts   TEXT DEFAULT '[]'");
 
   return db;
 }
