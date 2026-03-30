@@ -1,6 +1,14 @@
 const router = require('express').Router();
 const { getDb } = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { sendLoadNotification } = require('../services/email');
+
+function notifyAdmins(db, market, event, load, extra) {
+  const admins = db.prepare("SELECT email, name FROM users WHERE market = ? AND role = 'admin'").all(market);
+  for (const a of admins) {
+    sendLoadNotification({ recipientEmail: a.email, recipientName: a.name, event, load, extra }).catch(() => {});
+  }
+}
 
 function parseLoad(row) {
   if (!row) return null;
@@ -79,7 +87,10 @@ router.patch('/:id/assign', requireAuth, (req, res) => {
 
   db.prepare("UPDATE loads SET carrier_id = ?, status = 'Booked', timeline = ? WHERE id = ?")
     .run(carrierId, JSON.stringify(timeline), req.params.id);
-  res.json(parseLoad(db.prepare('SELECT * FROM loads WHERE id = ?').get(req.params.id)));
+  const updated = parseLoad(db.prepare('SELECT * FROM loads WHERE id = ?').get(req.params.id));
+  const carrier = db.prepare('SELECT name FROM carriers WHERE id = ?').get(carrierId);
+  notifyAdmins(db, load.market, 'load_booked', updated, { carrierName: carrier?.name });
+  res.json(updated);
 });
 
 // PATCH /api/loads/:id/pickup
@@ -97,7 +108,9 @@ router.patch('/:id/pickup', requireAuth, (req, res) => {
 
   db.prepare("UPDATE loads SET status = 'In Transit', timeline = ? WHERE id = ?")
     .run(JSON.stringify(timeline), req.params.id);
-  res.json(parseLoad(db.prepare('SELECT * FROM loads WHERE id = ?').get(req.params.id)));
+  const updated = parseLoad(db.prepare('SELECT * FROM loads WHERE id = ?').get(req.params.id));
+  notifyAdmins(db, load.market, 'load_picked_up', updated);
+  res.json(updated);
 });
 
 // PATCH /api/loads/:id/deliver
@@ -113,7 +126,9 @@ router.patch('/:id/deliver', requireAuth, (req, res) => {
 
   db.prepare("UPDATE loads SET status = 'Delivered', timeline = ? WHERE id = ?")
     .run(JSON.stringify(timeline), req.params.id);
-  res.json(parseLoad(db.prepare('SELECT * FROM loads WHERE id = ?').get(req.params.id)));
+  const updated = parseLoad(db.prepare('SELECT * FROM loads WHERE id = ?').get(req.params.id));
+  notifyAdmins(db, load.market, 'load_delivered', updated);
+  res.json(updated);
 });
 
 // PATCH /api/loads/:id/cancel

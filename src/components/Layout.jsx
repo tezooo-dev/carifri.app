@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, LayoutGrid, PlusCircle, Truck, Building2,
   MapPin, DollarSign, BarChart2, Settings, Menu, X, Bot, LogOut,
-  BookOpen, Users, ShieldCheck, UserCog,
+  BookOpen, Users, ShieldCheck, UserCog, CreditCard,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
@@ -122,6 +122,17 @@ export default function Layout({ children }) {
                   isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                 }`}>
               <Settings size={17}/> Settings
+            </NavLink>
+          )}
+
+          {/* Billing — admin only */}
+          {can('settings.edit') && (
+            <NavLink to="/billing" onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}>
+              <CreditCard size={17}/> Billing
             </NavLink>
           )}
 

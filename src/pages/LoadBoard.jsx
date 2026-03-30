@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import {
   Search, ChevronDown, CheckCircle, XCircle, Truck, Package, MapPin,
-  Gavel, Star, Clock, ArrowRight, X, Zap, Filter, Eye,
+  Gavel, Star, Clock, ArrowRight, X, Zap, Filter, Eye, FileText,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import AssignCarrierModal from '../components/AssignCarrierModal';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { MARKETS } from '../data/markets';
+import { usePDF } from '../hooks/usePDF';
 
 const STATUS_COLORS = {
   Available:   'bg-emerald-100 text-emerald-700',
@@ -191,6 +192,7 @@ function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid 
 // ── Main Load Board ───────────────────────────────────────────────────────────
 export default function LoadBoard() {
   const { loads, carriers, settings, assignCarrier, cancelLoad, markPickedUp } = useApp();
+  const { generateBOL, generateInvoice } = usePDF();
   const [search,     setSearch]     = useState('');
   const [sortBy,     setSortBy]     = useState('newest');
   const [statusFilter,setStatusFilter] = useState('All');
@@ -357,6 +359,20 @@ export default function LoadBoard() {
                         <button onClick={() => markPickedUp(load.id)}
                           className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium">
                           <Truck size={12}/> Picked Up
+                        </button>
+                      )}
+                      {/* BOL PDF */}
+                      {['Booked','In Transit','Delivered'].includes(load.status) && (
+                        <button onClick={() => generateBOL(load)}
+                          className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200">
+                          <FileText size={12}/> BOL
+                        </button>
+                      )}
+                      {/* Invoice PDF */}
+                      {load.status === 'Delivered' && (
+                        <button onClick={() => generateInvoice(load)}
+                          className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100">
+                          <FileText size={12}/> Invoice
                         </button>
                       )}
                       {/* Cancel */}

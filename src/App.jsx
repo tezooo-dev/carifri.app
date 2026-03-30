@@ -17,11 +17,14 @@ import Settings        from './pages/Settings';
 import AIDispatch      from './pages/AIDispatch';
 import KnowledgeBase   from './pages/KnowledgeBase';
 import UserManagement  from './pages/UserManagement';
+import Billing         from './pages/Billing';
 import Landing         from './pages/Landing';
 import UserGuide       from './pages/UserGuide';
 import PrivacyPolicy   from './pages/PrivacyPolicy';
 import TermsOfService  from './pages/TermsOfService';
 import Login           from './pages/Login';
+import ForgotPassword  from './pages/ForgotPassword';
+import ResetPassword   from './pages/ResetPassword';
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -38,7 +41,6 @@ function RequireAuth({ children }) {
   return children;
 }
 
-/** Wraps authenticated pages and shows onboarding wizard on first login */
 function AuthenticatedLayout({ children }) {
   const { show, dismiss } = useOnboarding();
   return (
@@ -49,7 +51,6 @@ function AuthenticatedLayout({ children }) {
   );
 }
 
-/** Root route: landing for guests, dashboard for logged-in users */
 function RootRoute() {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -61,11 +62,13 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public routes */}
-      <Route path="/"        element={<RootRoute/>}/>
-      <Route path="/login"   element={<Login/>}/>
-      <Route path="/guide"   element={<UserGuide/>}/>
-      <Route path="/privacy" element={<PrivacyPolicy/>}/>
-      <Route path="/terms"   element={<TermsOfService/>}/>
+      <Route path="/"                element={<RootRoute/>}/>
+      <Route path="/login"           element={<Login/>}/>
+      <Route path="/forgot-password" element={<ForgotPassword/>}/>
+      <Route path="/reset-password"  element={<ResetPassword/>}/>
+      <Route path="/guide"           element={<UserGuide/>}/>
+      <Route path="/privacy"         element={<PrivacyPolicy/>}/>
+      <Route path="/terms"           element={<TermsOfService/>}/>
 
       {/* Protected app routes */}
       <Route path="/*" element={
@@ -84,7 +87,7 @@ function AppRoutes() {
               <Route path="/ai"         element={<AIDispatch/>}/>
               <Route path="/help"       element={<KnowledgeBase/>}/>
               <Route path="/users"      element={<UserManagement/>}/>
-              {/* Legacy redirect — old "/" links now go to /dashboard */}
+              <Route path="/billing"    element={<Billing/>}/>
               <Route path="/"           element={<Navigate to="/dashboard" replace/>}/>
             </Routes>
           </AuthenticatedLayout>

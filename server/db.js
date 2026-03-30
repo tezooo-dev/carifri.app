@@ -146,6 +146,26 @@ function initDb() {
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    TEXT NOT NULL,
+      token      TEXT UNIQUE NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      user_id                TEXT PRIMARY KEY,
+      plan                   TEXT NOT NULL DEFAULT 'trial',
+      status                 TEXT NOT NULL DEFAULT 'trialing',
+      stripe_customer_id     TEXT DEFAULT '',
+      stripe_subscription_id TEXT DEFAULT '',
+      current_period_end     TEXT DEFAULT '',
+      created_at             TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // Safe migrations: add columns that may not exist yet

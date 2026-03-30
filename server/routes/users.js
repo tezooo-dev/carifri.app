@@ -2,6 +2,7 @@ const router  = require('express').Router();
 const bcrypt  = require('bcryptjs');
 const { getDb } = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { sendWelcome } = require('../services/email');
 
 function safeUser(row) {
   if (!row) return null;
@@ -33,7 +34,10 @@ router.post('/', requireAuth, requireRole('admin'), (req, res) => {
   try {
     db.prepare(`INSERT INTO users (id, name, email, password_hash, role, avatar, market) VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .run(id, name, email.toLowerCase().trim(), hash, role, av, mkt);
-    res.status(201).json(safeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)));
+    const created = safeUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id));
+    // Fire welcome email async — don't block response
+    sendWelcome({ name, email: email.toLowerCase().trim(), role, market: mkt }).catch(() => {});
+    res.status(201).json(created);
   } catch (err) {
     if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already in use' });
     throw err;

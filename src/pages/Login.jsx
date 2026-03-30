@@ -70,7 +70,10 @@ export default function Login() {
                 className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"/>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Password</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-600">Password</label>
+                <Link to="/forgot-password" className="text-xs text-blue-600 hover:underline">Forgot password?</Link>
+              </div>
               <div className="relative">
                 <input type={showPw ? 'text' : 'password'} required value={password} onChange={e => setPassword(e.target.value)}
                   placeholder="Enter your password"
