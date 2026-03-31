@@ -18,6 +18,8 @@ import AIDispatch      from './pages/AIDispatch';
 import KnowledgeBase   from './pages/KnowledgeBase';
 import UserManagement  from './pages/UserManagement';
 import Billing         from './pages/Billing';
+import Tickets         from './pages/Tickets';
+import RoleManagement  from './pages/RoleManagement';
 import Landing         from './pages/Landing';
 import UserGuide       from './pages/UserGuide';
 import PrivacyPolicy   from './pages/PrivacyPolicy';
@@ -88,6 +90,8 @@ function AppRoutes() {
               <Route path="/help"       element={<KnowledgeBase/>}/>
               <Route path="/users"      element={<UserManagement/>}/>
               <Route path="/billing"    element={<Billing/>}/>
+              <Route path="/tickets"    element={<Tickets/>}/>
+              <Route path="/roles"      element={<RoleManagement/>}/>
               <Route path="/"           element={<Navigate to="/dashboard" replace/>}/>
             </Routes>
           </AuthenticatedLayout>

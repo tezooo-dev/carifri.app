@@ -8,8 +8,14 @@ const ACCESS_TTL  = '8h';
 const REFRESH_TTL = 60 * 60 * 24 * 30; // 30 days in seconds
 
 function signAccess(user) {
+  const customPerms = JSON.parse(user.custom_perms || '[]');
   return jwt.sign(
-    { sub: user.id, name: user.name, email: user.email, role: user.role, avatar: user.avatar, market: user.market },
+    {
+      sub: user.id, name: user.name, email: user.email,
+      role: user.role, avatar: user.avatar, market: user.market,
+      customRole: user.custom_role || '',
+      customPerms: customPerms.length ? customPerms : undefined,
+    },
     SECRET,
     { expiresIn: ACCESS_TTL }
   );

@@ -16,10 +16,13 @@ function requireAuth(req, res, next) {
   }
 }
 
-// requireRole('admin') or requireRole('admin','operations') — must come after requireAuth
+// requireRole('admin') or requireRole('admin','super_admin') — must come after requireAuth
+// super_admin always passes any role check (it is the highest privilege level)
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+    // super_admin bypasses all role restrictions
+    if (req.user.role === 'super_admin') return next();
     if (!roles.includes(req.user.role)) return res.status(403).json({ error: 'Forbidden: insufficient role' });
     next();
   };

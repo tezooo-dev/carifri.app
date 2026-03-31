@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, LayoutGrid, PlusCircle, Truck, Building2,
   MapPin, DollarSign, BarChart2, Settings, Menu, X, Bot, LogOut,
-  BookOpen, Users, ShieldCheck, UserCog, CreditCard,
+  BookOpen, Users, ShieldCheck, UserCog, CreditCard, Ticket, Shield,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
@@ -23,12 +23,14 @@ const NAV_ALL = [
   { to: '/finance',   label: 'Finance',         icon: DollarSign,      perm: 'finance.view'    },
   { to: '/reports',   label: 'Reports',         icon: BarChart2,       perm: 'reports.view'    },
   { to: '/ai',        label: 'AI Dispatch',     icon: Bot,             perm: 'ai.use'          },
+  { to: '/tickets',   label: 'Support Tickets', icon: Ticket,          perm: 'tickets.view'    },
   { to: '/help',      label: 'Help & Guides',   icon: BookOpen,        perm: 'help.view'       },
 ];
 
 const ROLE_META = {
-  admin:      { label: 'Admin',      color: 'text-blue-400',    icon: ShieldCheck },
-  operations: { label: 'Operations', color: 'text-emerald-400', icon: UserCog     },
+  super_admin: { label: 'Super Admin', color: 'text-red-400',     icon: Shield      },
+  admin:       { label: 'Admin',       color: 'text-blue-400',    icon: ShieldCheck },
+  operations:  { label: 'Operations',  color: 'text-emerald-400', icon: UserCog     },
 };
 
 export default function Layout({ children }) {
@@ -111,6 +113,17 @@ export default function Layout({ children }) {
                   isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                 }`}>
               <Users size={17}/> User Management
+            </NavLink>
+          )}
+
+          {/* Role Management — admin only */}
+          {can('roles.manage') && (
+            <NavLink to="/roles" onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}>
+              <Shield size={17}/> Role Management
             </NavLink>
           )}
 

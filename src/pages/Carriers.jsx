@@ -2,15 +2,15 @@ import { useState } from 'react';
 import {
   Star, Plus, X, Truck, Phone, Mail, MapPin, CheckCircle, Shield,
   FileText, Wifi, Users, ChevronDown, ChevronRight, Edit3, Trash2,
-  AlertTriangle, Building2, Globe, ClipboardList,
+  AlertTriangle, Building2, Globe, ClipboardList, BadgeCheck,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { MARKETS } from '../data/markets';
 import api from '../lib/api';
 
-const TABS = ['Overview', 'Contacts', 'Contracts', 'Insurance', 'EDI'];
-const TAB_ICONS = [Truck, Users, ClipboardList, Shield, Wifi];
+const TABS = ['Overview', 'Contacts', 'Contracts', 'Insurance', 'EDI', 'Compliance'];
+const TAB_ICONS = [Truck, Users, ClipboardList, Shield, Wifi, BadgeCheck];
 
 const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white';
 
@@ -117,10 +117,21 @@ function CarrierDetailDrawer({ carrier: initialCarrier, loads, onClose }) {
   const [saving,  setSaving]  = useState(false);
 
   // Local editable state for each tab
-  const [contacts,  setContacts]  = useState(carrier.contacts  || []);
-  const [contracts, setContracts] = useState(carrier.contracts || []);
-  const [insurance, setInsurance] = useState(carrier.insurance || {});
-  const [edi,       setEdi]       = useState(carrier.ediConfig || {});
+  const [contacts,   setContacts]   = useState(carrier.contacts  || []);
+  const [contracts,  setContracts]  = useState(carrier.contracts || []);
+  const [insurance,  setInsurance]  = useState(carrier.insurance || {});
+  const [edi,        setEdi]        = useState(carrier.ediConfig || {});
+  const [compliance, setCompliance] = useState({
+    mcNumber:      carrier.mcNumber      || '',
+    dotNumber:     carrier.dotNumber     || '',
+    authorityType: carrier.authorityType || '',
+    w9OnFile:      carrier.w9OnFile      || false,
+    coiOnFile:     carrier.coiOnFile     || false,
+    cvorNumber:    carrier.cvorNumber    || '',
+    nscNumber:     carrier.nscNumber     || '',
+    iftaNumber:    carrier.iftaNumber    || '',
+    cvorStatus:    carrier.cvorStatus    || '',
+  });
 
   const carrierLoads = loads.filter(l => l.carrierId === carrier.id);
 
@@ -139,6 +150,10 @@ function CarrierDetailDrawer({ carrier: initialCarrier, loads, onClose }) {
   async function saveEdi() {
     setSaving(true);
     try { await api.put(`/carrier-details/${carrier.id}/edi`, { ediConfig: edi }); } finally { setSaving(false); }
+  }
+  async function saveCompliance() {
+    setSaving(true);
+    try { await api.put(`/carrier-details/${carrier.id}/compliance`, compliance); } finally { setSaving(false); }
   }
 
   function addContact() {
@@ -498,6 +513,123 @@ function CarrierDetailDrawer({ carrier: initialCarrier, loads, onClose }) {
               <button onClick={saveEdi} disabled={saving}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save EDI Config'}
+              </button>
+            </div>
+          )}
+
+          {/* ── Compliance ── */}
+          {tab === 'Compliance' && (
+            <div className="space-y-5">
+              <p className="text-sm text-slate-500">Track regulatory compliance fields for US (FMCSA) and Canadian (Transport Canada) carrier requirements.</p>
+
+              {/* US Section */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-base">🇺🇸</span>
+                  <span className="text-sm font-bold text-slate-800">US (FMCSA) Compliance</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">MC Number (Motor Carrier)</label>
+                    <input value={compliance.mcNumber} onChange={e => setCompliance(p=>({...p,mcNumber:e.target.value}))}
+                      className={`mt-1 ${inputCls}`} placeholder="MC-123456"/>
+                    <p className="text-xs text-slate-400 mt-0.5">Issued by FMCSA for interstate commerce</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">USDOT Number</label>
+                    <input value={compliance.dotNumber} onChange={e => setCompliance(p=>({...p,dotNumber:e.target.value}))}
+                      className={`mt-1 ${inputCls}`} placeholder="DOT-1234567"/>
+                    <p className="text-xs text-slate-400 mt-0.5">Required for all interstate commercial carriers</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Operating Authority Type</label>
+                    <select value={compliance.authorityType} onChange={e => setCompliance(p=>({...p,authorityType:e.target.value}))}
+                      className={`mt-1 ${inputCls}`}>
+                      <option value="">Select…</option>
+                      <option value="Common Carrier">Common Carrier</option>
+                      <option value="Contract Carrier">Contract Carrier</option>
+                      <option value="Broker Authority">Broker Authority</option>
+                      <option value="Freight Forwarder">Freight Forwarder</option>
+                      <option value="Owner-Operator">Owner-Operator</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2 pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={compliance.w9OnFile} onChange={e => setCompliance(p=>({...p,w9OnFile:e.target.checked}))}
+                        className="w-4 h-4 accent-blue-600"/>
+                      <span className="text-sm text-slate-700">W-9 on File</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={compliance.coiOnFile} onChange={e => setCompliance(p=>({...p,coiOnFile:e.target.checked}))}
+                        className="w-4 h-4 accent-blue-600"/>
+                      <span className="text-sm text-slate-700">Certificate of Insurance (COI) on File</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-800 space-y-1">
+                  <div className="font-semibold">FMCSA Insurance Minimums</div>
+                  <div>• General Freight: $750,000 liability</div>
+                  <div>• Hazmat / Oil: $1,000,000 – $5,000,000</div>
+                  <div>• Household Goods: $300,000</div>
+                  <div>Verify at: safer.fmcsa.dot.gov</div>
+                </div>
+              </div>
+
+              {/* Canada Section */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-base">🇨🇦</span>
+                  <span className="text-sm font-bold text-slate-800">Canada (Transport Canada) Compliance</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">CVOR Number</label>
+                    <input value={compliance.cvorNumber} onChange={e => setCompliance(p=>({...p,cvorNumber:e.target.value}))}
+                      className={`mt-1 ${inputCls}`} placeholder="e.g. 123456789ON"/>
+                    <p className="text-xs text-slate-400 mt-0.5">Commercial Vehicle Operator Registration (Ontario MTO)</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">CVOR Safety Rating</label>
+                    <select value={compliance.cvorStatus} onChange={e => setCompliance(p=>({...p,cvorStatus:e.target.value}))}
+                      className={`mt-1 ${inputCls}`}>
+                      <option value="">Unknown</option>
+                      <option value="Satisfactory">Satisfactory</option>
+                      <option value="Satisfactory Unaudited">Satisfactory Unaudited</option>
+                      <option value="Conditional">Conditional</option>
+                      <option value="Unsatisfactory">Unsatisfactory</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">NSC Number (National Safety Code)</label>
+                    <input value={compliance.nscNumber} onChange={e => setCompliance(p=>({...p,nscNumber:e.target.value}))}
+                      className={`mt-1 ${inputCls}`} placeholder="NSC-123456"/>
+                    <p className="text-xs text-slate-400 mt-0.5">Required for all Canadian provinces / territories</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">IFTA Account Number</label>
+                    <input value={compliance.iftaNumber} onChange={e => setCompliance(p=>({...p,iftaNumber:e.target.value}))}
+                      className={`mt-1 ${inputCls}`} placeholder="e.g. ON123456789"/>
+                    <p className="text-xs text-slate-400 mt-0.5">International Fuel Tax Agreement (US+Canada cross-border)</p>
+                  </div>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3 text-xs text-red-800 space-y-1">
+                  <div className="font-semibold">Canadian Insurance Minimums</div>
+                  <div>• BC / AB / ON / QC: $2,000,000 liability (public)</div>
+                  <div>• Cargo: $250,000 recommended</div>
+                  <div>• ELD Mandate applies to vehicles ≥ 4,500 kg GVWR</div>
+                  <div>Verify CVOR: ontario.ca/cvor-abstract</div>
+                </div>
+              </div>
+
+              {/* Cross-border note */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+                <div className="font-semibold mb-1">Cross-Border (USMCA / CUSMA) Requirements</div>
+                <div>For US↔Canada loads: carrier must hold both MC# (US) and CVOR/NSC (Canada). IFTA required for fuel tax reporting across jurisdictions. ACE/ACI eManifest filing required 30 min before border crossing.</div>
+              </div>
+
+              <button onClick={saveCompliance} disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50">
+                {saving ? 'Saving…' : 'Save Compliance Data'}
               </button>
             </div>
           )}

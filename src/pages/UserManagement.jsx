@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Plus, Pencil, Trash2, X, Check, Eye, EyeOff,
-  ShieldCheck, UserCog, RefreshCw, AlertTriangle,
+  ShieldCheck, UserCog, RefreshCw, AlertTriangle, Shield,
 } from 'lucide-react';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -11,17 +11,29 @@ import { useApp } from '../context/AppContext';
 import { MARKETS } from '../data/markets';
 
 const ROLE_META = {
-  admin:      { label: 'Admin',      color: 'bg-blue-100 text-blue-700',    icon: ShieldCheck },
-  operations: { label: 'Operations', color: 'bg-emerald-100 text-emerald-700', icon: UserCog  },
+  super_admin: { label: 'Super Admin', color: 'bg-red-100 text-red-700',       icon: Shield      },
+  admin:       { label: 'Admin',       color: 'bg-blue-100 text-blue-700',     icon: ShieldCheck },
+  operations:  { label: 'Operations',  color: 'bg-emerald-100 text-emerald-700', icon: UserCog   },
 };
 
-function RoleBadge({ role }) {
+const ROLE_DESC = {
+  super_admin: 'FreightLink IT: full platform access, all clients.',
+  admin:       'Full access: users, carriers, settings, billing.',
+  operations:  'Load board, carrier details, reports, tracking.',
+};
+
+function RoleBadge({ role, customRole }) {
   const meta = ROLE_META[role] || ROLE_META.operations;
   const Icon = meta.icon;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${meta.color}`}>
-      <Icon size={10}/>{meta.label}
-    </span>
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${meta.color}`}>
+        <Icon size={10}/>{meta.label}
+      </span>
+      {customRole && (
+        <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">{customRole}</span>
+      )}
+    </div>
   );
 }
 
@@ -125,7 +137,8 @@ export default function UserManagement() {
     }
   }
 
-  const adminCount = users.filter(u => u.role === 'admin').length;
+  const adminCount      = users.filter(u => u.role === 'admin').length;
+  const { isSuperAdmin } = usePermissions();
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -157,10 +170,11 @@ export default function UserManagement() {
       )}
 
       {/* Role summary */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-6">
         {Object.entries(ROLE_META).map(([role, meta]) => {
           const count = users.filter(u => u.role === role).length;
-          const Icon = meta.icon;
+          const Icon  = meta.icon;
+          if (role === 'super_admin' && !isSuperAdmin()) return null;
           return (
             <div key={role} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${meta.color}`}>
@@ -168,7 +182,7 @@ export default function UserManagement() {
               </div>
               <div>
                 <div className="text-2xl font-bold text-slate-900">{count}</div>
-                <div className="text-slate-500 text-sm">{meta.label} user{count !== 1 ? 's' : ''}</div>
+                <div className="text-slate-500 text-sm">{meta.label}</div>
               </div>
             </div>
           );
@@ -177,12 +191,22 @@ export default function UserManagement() {
 
       {/* Permissions reference */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-        <h3 className="font-semibold text-slate-800 text-sm mb-3">Role Permissions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+        <h3 className="font-semibold text-slate-800 text-sm mb-3">Built-in Role Permissions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          {isSuperAdmin() && (
+            <div>
+              <div className="flex items-center gap-1.5 font-medium text-red-700 mb-2"><Shield size={14}/> Super Admin</div>
+              <ul className="space-y-1 text-slate-600">
+                {['All admin permissions','Manage all client companies','Create super admin accounts','System-wide troubleshooting'].map(p => (
+                  <li key={p} className="flex items-center gap-1.5"><Check size={12} className="text-red-500 shrink-0"/>{p}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-1.5 font-medium text-blue-700 mb-2"><ShieldCheck size={14}/> Admin</div>
             <ul className="space-y-1 text-slate-600">
-              {['All pages & features','Create / delete users','Add / remove carriers','Add / remove shippers','System settings','Carrier contracts, insurance, EDI'].map(p => (
+              {['All pages & features','Create / delete users','Manage custom roles','Add / remove carriers','System settings & billing','Support tickets'].map(p => (
                 <li key={p} className="flex items-center gap-1.5"><Check size={12} className="text-emerald-500 shrink-0"/>{p}</li>
               ))}
             </ul>
@@ -192,11 +216,11 @@ export default function UserManagement() {
             <ul className="space-y-1 text-slate-600">
               {[
                 { text: 'Load board (post, bid, assign)', ok: true },
-                { text: 'Carrier view + contracts/insurance/EDI', ok: true },
+                { text: 'Carrier view + details', ok: true },
                 { text: 'Reports & finance', ok: true },
-                { text: 'Tracking, AI Dispatch, Help', ok: true },
+                { text: 'Tracking, AI, Help, Tickets (view)', ok: true },
                 { text: 'Add / remove carriers', ok: false },
-                { text: 'User management & settings', ok: false },
+                { text: 'User / role management', ok: false },
               ].map(p => (
                 <li key={p.text} className="flex items-center gap-1.5">
                   {p.ok
@@ -207,6 +231,9 @@ export default function UserManagement() {
               ))}
             </ul>
           </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400">
+          For granular permissions beyond these roles, use <strong>Role Management</strong> to create custom roles.
         </div>
       </div>
 
@@ -250,7 +277,7 @@ export default function UserManagement() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3"><RoleBadge role={u.role}/></td>
+                    <td className="px-4 py-3"><RoleBadge role={u.role} customRole={u.custom_role}/></td>
                     <td className="px-4 py-3 hidden md:table-cell text-slate-600">
                       {mktInfo.flag} {mktInfo.name}
                     </td>
@@ -336,6 +363,7 @@ export default function UserManagement() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Role *</label>
                 <div className="grid grid-cols-2 gap-2">
                   {Object.entries(ROLE_META).map(([r, meta]) => {
+                    if (r === 'super_admin' && !isSuperAdmin()) return null;
                     const Icon = meta.icon;
                     const selected = form.role === r;
                     return (
@@ -349,11 +377,7 @@ export default function UserManagement() {
                     );
                   })}
                 </div>
-                <p className="text-xs text-slate-400 mt-1.5">
-                  {form.role === 'admin'
-                    ? 'Full access including user management and carrier add/remove.'
-                    : 'Load board, carrier details, reports, finance, tracking. Cannot add/remove carriers or manage users.'}
-                </p>
+                <p className="text-xs text-slate-400 mt-1.5">{ROLE_DESC[form.role] || ''}</p>
               </div>
 
               {/* Market */}

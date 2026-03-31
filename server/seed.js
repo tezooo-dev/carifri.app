@@ -3,6 +3,9 @@ const bcrypt = require('bcryptjs');
 function seedDatabase(db) {
   // ── Users ─────────────────────────────────────────────────────────────────
   const users = [
+    // Super admin — FreightLink IT team (platform-level access)
+    { id: 'u0', name: 'IT Super Admin',    email: 'it@freightlink.io',            password: 'super123',   role: 'super_admin', avatar: 'IT', market: 'kenya'  },
+    // Per-market client admins
     { id: 'u1', name: 'Admin User',        email: 'admin@freightlink.co.ke',      password: 'admin123',   role: 'admin',      avatar: 'AU', market: 'kenya'  },
     { id: 'u2', name: 'James Kimani',      email: 'ops@freightlink.co.ke',        password: 'ops123',     role: 'operations', avatar: 'JK', market: 'kenya'  },
     { id: 'u3', name: 'Aisha Finance',     email: 'finance@freightlink.co.ke',    password: 'finance123', role: 'operations', avatar: 'AF', market: 'kenya'  },

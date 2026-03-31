@@ -170,10 +170,87 @@ function initDb() {
 
   // Safe migrations: add columns that may not exist yet
   const safeAlter = (sql) => { try { db.prepare(sql).run(); } catch {} };
-  safeAlter("ALTER TABLE carriers ADD COLUMN contracts  TEXT DEFAULT '[]'");
-  safeAlter("ALTER TABLE carriers ADD COLUMN insurance  TEXT DEFAULT '{}'");
-  safeAlter("ALTER TABLE carriers ADD COLUMN edi_config TEXT DEFAULT '{}'");
-  safeAlter("ALTER TABLE carriers ADD COLUMN contacts   TEXT DEFAULT '[]'");
+  safeAlter("ALTER TABLE carriers ADD COLUMN contracts    TEXT DEFAULT '[]'");
+  safeAlter("ALTER TABLE carriers ADD COLUMN insurance    TEXT DEFAULT '{}'");
+  safeAlter("ALTER TABLE carriers ADD COLUMN edi_config   TEXT DEFAULT '{}'");
+  safeAlter("ALTER TABLE carriers ADD COLUMN contacts     TEXT DEFAULT '[]'");
+  // US compliance fields
+  safeAlter("ALTER TABLE carriers ADD COLUMN mc_number      TEXT DEFAULT ''");
+  safeAlter("ALTER TABLE carriers ADD COLUMN dot_number     TEXT DEFAULT ''");
+  safeAlter("ALTER TABLE carriers ADD COLUMN authority_type TEXT DEFAULT ''");
+  safeAlter("ALTER TABLE carriers ADD COLUMN w9_on_file     INTEGER DEFAULT 0");
+  safeAlter("ALTER TABLE carriers ADD COLUMN coi_on_file    INTEGER DEFAULT 0");
+  // Canada compliance fields
+  safeAlter("ALTER TABLE carriers ADD COLUMN cvor_number    TEXT DEFAULT ''");
+  safeAlter("ALTER TABLE carriers ADD COLUMN nsc_number     TEXT DEFAULT ''");
+  safeAlter("ALTER TABLE carriers ADD COLUMN ifta_number    TEXT DEFAULT ''");
+  safeAlter("ALTER TABLE carriers ADD COLUMN cvor_status    TEXT DEFAULT ''");
+  // US+Canada load fields
+  safeAlter("ALTER TABLE loads ADD COLUMN cross_border       INTEGER DEFAULT 0");
+  safeAlter("ALTER TABLE loads ADD COLUMN customs_ref        TEXT DEFAULT ''");
+  safeAlter("ALTER TABLE loads ADD COLUMN fuel_surcharge_pct REAL DEFAULT 0");
+  safeAlter("ALTER TABLE loads ADD COLUMN accessorials       TEXT DEFAULT '[]'");
+  safeAlter("ALTER TABLE loads ADD COLUMN load_type          TEXT DEFAULT 'FTL'");
+  safeAlter("ALTER TABLE loads ADD COLUMN hazmat             INTEGER DEFAULT 0");
+  safeAlter("ALTER TABLE loads ADD COLUMN temp_controlled    INTEGER DEFAULT 0");
+
+  // Ticket management tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tickets (
+      id           TEXT PRIMARY KEY,
+      market       TEXT NOT NULL DEFAULT 'kenya',
+      title        TEXT NOT NULL,
+      description  TEXT NOT NULL DEFAULT '',
+      category     TEXT NOT NULL DEFAULT 'Support',
+      priority     TEXT NOT NULL DEFAULT 'Medium',
+      status       TEXT NOT NULL DEFAULT 'Open',
+      submitter_name  TEXT NOT NULL DEFAULT '',
+      submitter_email TEXT NOT NULL DEFAULT '',
+      submitter_type  TEXT NOT NULL DEFAULT 'carrier',
+      submitter_ref   TEXT DEFAULT '',
+      assigned_to  TEXT DEFAULT '',
+      load_ref     TEXT DEFAULT '',
+      attachments  TEXT DEFAULT '[]',
+      resolved_at  TEXT DEFAULT '',
+      created_at   TEXT DEFAULT (datetime('now')),
+      updated_at   TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS ticket_comments (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id  TEXT NOT NULL,
+      author_id  TEXT NOT NULL DEFAULT '',
+      author_name TEXT NOT NULL DEFAULT '',
+      author_role TEXT NOT NULL DEFAULT 'operations',
+      body       TEXT NOT NULL,
+      is_internal INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (ticket_id) REFERENCES tickets(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tickets_market   ON tickets(market);
+    CREATE INDEX IF NOT EXISTS idx_tickets_status   ON tickets(status);
+    CREATE INDEX IF NOT EXISTS idx_tickets_category ON tickets(category);
+    CREATE INDEX IF NOT EXISTS idx_tc_ticket        ON ticket_comments(ticket_id);
+  `);
+
+  // Custom roles table — per-market, defined by admins
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_roles (
+      id          TEXT PRIMARY KEY,
+      market      TEXT NOT NULL DEFAULT 'kenya',
+      name        TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      permissions TEXT NOT NULL DEFAULT '[]',
+      created_by  TEXT DEFAULT '',
+      created_at  TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_custom_roles_market ON custom_roles(market);
+  `);
+
+  // Add custom_role and custom_perms columns to users
+  safeAlter("ALTER TABLE users ADD COLUMN custom_role  TEXT DEFAULT ''");
+  safeAlter("ALTER TABLE users ADD COLUMN custom_perms TEXT DEFAULT '[]'");
 
   // Role migration: normalize legacy role values to admin / operations
   try {
