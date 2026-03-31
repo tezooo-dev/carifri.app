@@ -39,7 +39,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'blue', onClick }) {
 }
 
 export default function Dashboard() {
-  const { loads, carriers, shippers, stats } = useApp();
+  const { loads, carriers, shippers, stats, settings } = useApp();
   const navigate = useNavigate();
 
   // Status breakdown
@@ -104,13 +104,13 @@ export default function Dashboard() {
         />
         <StatCard
           icon={TrendingUp} label="Commission Earned" color="emerald"
-          value={`KES ${(stats.receivedCommission / 1000).toFixed(0)}K`}
+          value={`${settings.currency} ${(stats.receivedCommission / 1000).toFixed(0)}K`}
           sub={`${collectionRate}% collection rate`}
           onClick={() => navigate('/finance')}
         />
         <StatCard
           icon={Clock} label="Pending Commission" color="amber"
-          value={`KES ${(stats.pendingCommission / 1000).toFixed(0)}K`}
+          value={`${settings.currency} ${(stats.pendingCommission / 1000).toFixed(0)}K`}
           sub={`${loads.filter(l => !l.commissionReceived && l.status !== 'Cancelled').length} loads outstanding`}
           onClick={() => navigate('/finance')}
         />
@@ -271,7 +271,7 @@ export default function Dashboard() {
                     <div className="text-xs text-slate-400 mt-0.5">{l.commodity} · {l.weight.toLocaleString()} kg</div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-xs font-bold text-slate-900">KES {(l.freightAmount / 1000).toFixed(0)}K</div>
+                    <div className="text-xs font-bold text-slate-900">{settings.currency} {(l.freightAmount / 1000).toFixed(0)}K</div>
                     <span className={`text-xs px-1.5 py-0.5 rounded-full ${c.bg} ${c.text} font-medium`}>
                       {l.status}
                     </span>
