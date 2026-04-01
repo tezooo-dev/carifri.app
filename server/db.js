@@ -256,6 +256,68 @@ function initDb() {
   safeAlter("ALTER TABLE users ADD COLUMN custom_role  TEXT DEFAULT ''");
   safeAlter("ALTER TABLE users ADD COLUMN custom_perms TEXT DEFAULT '[]'");
 
+  // Tracking code reference table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tracking_codes (
+      code        TEXT PRIMARY KEY,
+      category    TEXT NOT NULL DEFAULT 'Status',
+      message     TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      is_terminal INTEGER DEFAULT 0,
+      created_at  TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_tc_category ON tracking_codes(category);
+
+    -- Carrier load documents (BOL, POD, invoice uploads)
+    CREATE TABLE IF NOT EXISTS load_documents (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      load_id     TEXT NOT NULL,
+      carrier_id  TEXT NOT NULL DEFAULT '',
+      doc_type    TEXT NOT NULL DEFAULT 'Other',
+      name        TEXT NOT NULL,
+      url         TEXT DEFAULT '',
+      notes       TEXT DEFAULT '',
+      uploaded_by TEXT DEFAULT '',
+      created_at  TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (load_id) REFERENCES loads(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ld_load ON load_documents(load_id);
+
+    -- Carrier tracking events (manual code entry)
+    CREATE TABLE IF NOT EXISTS carrier_tracking (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      load_id     TEXT NOT NULL,
+      carrier_id  TEXT NOT NULL,
+      code        TEXT NOT NULL,
+      message     TEXT NOT NULL,
+      location    TEXT DEFAULT '',
+      notes       TEXT DEFAULT '',
+      latitude    REAL,
+      longitude   REAL,
+      event_time  TEXT DEFAULT (datetime('now')),
+      created_at  TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (load_id) REFERENCES loads(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ct_load ON carrier_tracking(load_id);
+
+    -- Carrier disputes
+    CREATE TABLE IF NOT EXISTS carrier_disputes (
+      id           TEXT PRIMARY KEY,
+      load_id      TEXT NOT NULL,
+      carrier_id   TEXT NOT NULL,
+      subject      TEXT NOT NULL,
+      description  TEXT DEFAULT '',
+      dispute_type TEXT DEFAULT 'General',
+      status       TEXT DEFAULT 'Open',
+      resolution   TEXT DEFAULT '',
+      created_at   TEXT DEFAULT (datetime('now')),
+      updated_at   TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (load_id) REFERENCES loads(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_cd_carrier ON carrier_disputes(carrier_id);
+    CREATE INDEX IF NOT EXISTS idx_cd_load    ON carrier_disputes(load_id);
+  `);
+
   // Role migration: normalize legacy role values to admin / operations
   try {
     db.prepare("UPDATE users SET role = 'admin'      WHERE role = 'Admin'").run();

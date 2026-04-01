@@ -281,6 +281,65 @@ function seedDatabase(db) {
      ])],
   ];
   for (const l of loads) insertLoad.run(...l);
+
+  // ── Tracking Codes (EDI 214 / ANSI X12 standard + common freight codes) ─────
+  const trackingCodes = [
+    // Pickup & Origin
+    ['X1', 'Pickup',  'Picked Up',                          'Shipment picked up from origin', 0],
+    ['AF', 'Pickup',  'Carrier Dispatched',                 'Driver dispatched to pickup location', 0],
+    ['AM', 'Pickup',  'Loaded on Trailer',                  'Freight loaded and secured on trailer', 0],
+    // In Transit
+    ['X6', 'Transit', 'In Transit',                         'Shipment is in transit to destination', 0],
+    ['AG', 'Transit', 'Estimated Delivery Updated',         'ETA has been revised by the carrier', 0],
+    ['X8', 'Transit', 'Arrived at Terminal / Cross-dock',   'Freight arrived at intermediate terminal', 0],
+    ['X9', 'Transit', 'Departed Terminal',                  'Freight departed terminal toward destination', 0],
+    ['A3', 'Transit', 'Shipment Returned to Shipper',       'Shipment could not be delivered — returned', 0],
+    ['A7', 'Transit', 'Refused by Consignee',               'Consignee refused the shipment', 0],
+    ['A9', 'Transit', 'Shipment Damaged',                   'Cargo damage identified in transit', 0],
+    ['AA', 'Transit', 'Shipment Held',                      'Shipment held at carrier facility', 0],
+    ['AB', 'Transit', 'Out for Delivery',                   'Driver loaded and heading to delivery address', 0],
+    // Delivery
+    ['D1', 'Delivery','Delivered',                          'Shipment successfully delivered', 1],
+    ['X3', 'Delivery','Delivered — POD Obtained',           'Delivered with Proof of Delivery signature', 1],
+    ['P1', 'Delivery','Delivery Attempted — No Access',     'Driver could not access delivery location', 0],
+    ['CA', 'Delivery','Delivery Rescheduled',               'Delivery date/time changed by carrier or shipper', 0],
+    // Delays & Exceptions
+    ['L1', 'Exception','Late — Weather Delay',              'Shipment delayed due to weather conditions', 0],
+    ['L2', 'Exception','Late — Mechanical Breakdown',       'Carrier vehicle mechanical issue', 0],
+    ['L3', 'Exception','Late — Traffic / Road Closure',     'Delay due to traffic, accident, or road closure', 0],
+    ['L4', 'Exception','Late — Border / Customs Hold',      'Shipment held at US-Canada border for inspection', 0],
+    ['L5', 'Exception','Late — Driver Hours (HOS)',         'Driver exceeded hours-of-service limit', 0],
+    ['OB', 'Exception','Overweight / Oversize Issue',       'Load flagged for weight or dimension violation', 0],
+    ['RS', 'Exception','Shipment Rerouted',                 'Route changed due to road conditions or instructions', 0],
+    // Documents
+    ['C1', 'Documents','BOL Received',                      'Bill of Lading received by carrier', 0],
+    ['C2', 'Documents','Rate Confirmation Signed',          'Carrier signed rate confirmation', 0],
+    ['C3', 'Documents','Proof of Delivery Uploaded',        'POD document uploaded by carrier', 0],
+    ['C4', 'Documents','Invoice Submitted',                 'Carrier invoice submitted for payment', 0],
+    ['C5', 'Documents','Insurance Certificate Submitted',   'COI uploaded to carrier file', 0],
+    // Customs (US-Canada)
+    ['CB', 'Customs', 'CBSA ACI eManifest Filed',          'Canadian ACI eManifest submitted', 0],
+    ['CA', 'Customs', 'ACE eManifest Filed',               'US ACE eManifest filed at border', 0],
+    ['CX', 'Customs', 'Cleared Customs',                   'Shipment cleared US/Canada customs inspection', 0],
+    ['CH', 'Customs', 'Customs Hold',                      'Shipment held at border for CBSA/CBP inspection', 0],
+    ['CR', 'Customs', 'Customs Exam Required',             'Random or flagged customs examination requested', 0],
+    // Billing
+    ['B1', 'Billing', 'Advance Payment Requested',         'Carrier requesting advance/fuel advance', 0],
+    ['B2', 'Billing', 'Advance Payment Sent',              'Broker confirmed advance payment sent', 0],
+    ['B3', 'Billing', 'Final Payment Requested',           'Carrier invoice submitted for final payment', 0],
+    ['B4', 'Billing', 'Payment Remitted',                  'Broker confirmed payment sent to carrier', 1],
+    // Driver & Equipment
+    ['DR', 'Driver',  'Driver Assigned',                   'Named driver assigned to this load', 0],
+    ['DC', 'Driver',  'Driver Changed',                    'Different driver assigned to load', 0],
+    ['TU', 'Driver',  'Truck / Unit Changed',              'Different equipment assigned to load', 0],
+    ['EL', 'Driver',  'ELD Compliance Confirmed',          'Driver confirmed ELD compliant for this run', 0],
+  ];
+
+  const insertCode = db.prepare(`
+    INSERT OR IGNORE INTO tracking_codes (code, category, message, description, is_terminal)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  for (const c of trackingCodes) insertCode.run(...c);
 }
 
 module.exports = { seedDatabase };

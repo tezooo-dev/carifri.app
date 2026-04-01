@@ -20,6 +20,7 @@ import UserManagement  from './pages/UserManagement';
 import Billing         from './pages/Billing';
 import Tickets         from './pages/Tickets';
 import RoleManagement  from './pages/RoleManagement';
+import CarrierPortal   from './pages/CarrierPortal';
 import Landing         from './pages/Landing';
 import UserGuide       from './pages/UserGuide';
 import PrivacyPolicy   from './pages/PrivacyPolicy';
@@ -91,7 +92,8 @@ function AppRoutes() {
               <Route path="/users"      element={<UserManagement/>}/>
               <Route path="/billing"    element={<Billing/>}/>
               <Route path="/tickets"    element={<Tickets/>}/>
-              <Route path="/roles"      element={<RoleManagement/>}/>
+              <Route path="/roles"          element={<RoleManagement/>}/>
+              <Route path="/carrier-portal" element={<CarrierPortal/>}/>
               <Route path="/"           element={<Navigate to="/dashboard" replace/>}/>
             </Routes>
           </AuthenticatedLayout>

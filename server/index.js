@@ -20,6 +20,7 @@ const analyticsRouter      = require('./routes/analytics');
 const billingRouter        = require('./routes/billing');
 const ticketsRouter        = require('./routes/tickets');
 const rolesRouter          = require('./routes/roles');
+const carrierPortalRouter  = require('./routes/carrier-portal');
 
 const app  = express();
 const PORT = process.env.API_PORT || 3001;
@@ -45,6 +46,7 @@ app.use('/api/analytics',       analyticsRouter);
 app.use('/api/billing',         billingRouter);
 app.use('/api/tickets',         ticketsRouter);
 app.use('/api/roles',           rolesRouter);
+app.use('/api/carrier-portal',  carrierPortalRouter);
 app.get('/api/health',          (_, res) => res.json({ status: 'ok', version: '3.0.0' }));
 
 // ── Start ──────────────────────────────────────────────────────────────────────

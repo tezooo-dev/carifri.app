@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Search, ChevronDown, CheckCircle, XCircle, Truck, Package, MapPin,
   Gavel, Star, Clock, ArrowRight, X, Zap, Filter, Eye, FileText,
-  Plus, Trash2,
+  Plus, Trash2, Calculator, AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import AssignCarrierModal from '../components/AssignCarrierModal';
@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { MARKETS } from '../data/markets';
 import { usePDF } from '../hooks/usePDF';
+import { estimateTransit } from '../lib/transitCalc';
 
 const STATUS_COLORS = {
   Available:   'bg-emerald-100 text-emerald-700',
@@ -48,9 +49,35 @@ function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid 
   const [serviceDays, setServiceDays] = useState('');
   const [etaHours,    setEtaHours]    = useState('');
   const [notes,       setNotes]       = useState('');
-  const [accessorials, setAccessorials] = useState([]); // [{type, amount, note}]
+  const [accessorials, setAccessorials] = useState([]);
   const [submitting,  setSubmitting]  = useState(false);
+  // ZIP-based transit calc
+  const [originZip,   setOriginZip]   = useState('');
+  const [destZip,     setDestZip]     = useState('');
+  const [zipCountry,  setZipCountry]  = useState('us');
+  const [calcResult,  setCalcResult]  = useState(null); // {distanceMiles, transitDays, ...}
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcError,   setCalcError]   = useState('');
   const cur = settings.currency;
+
+  async function runTransitCalc() {
+    if (!originZip.trim() || !destZip.trim()) {
+      setCalcError('Enter both origin and destination ZIP codes.');
+      return;
+    }
+    setCalcLoading(true);
+    setCalcError('');
+    setCalcResult(null);
+    try {
+      const result = await estimateTransit(originZip.trim(), destZip.trim(), zipCountry);
+      setCalcResult(result);
+      setServiceDays(String(result.transitDays));
+    } catch (err) {
+      setCalcError(err.message || 'Could not look up ZIP codes. Check and try again.');
+    } finally {
+      setCalcLoading(false);
+    }
+  }
 
   useEffect(() => {
     api.get(`/bids/${load.id}`)
@@ -248,6 +275,60 @@ function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid 
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* ZIP-based transit calculator */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-700">
+                    <Calculator size={13}/> Auto-Calculate Transit Days from ZIP Codes
+                  </div>
+                  <div className="grid grid-cols-5 gap-2 items-end">
+                    <div className="col-span-1">
+                      <label className="text-xs text-slate-500">Country</label>
+                      <select value={zipCountry} onChange={e => setZipCountry(e.target.value)}
+                        className="mt-1 w-full border border-slate-200 rounded px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <option value="us">🇺🇸 US</option>
+                        <option value="ca">🇨🇦 CA</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs text-slate-500">Origin ZIP</label>
+                      <input value={originZip} onChange={e => setOriginZip(e.target.value)}
+                        placeholder="e.g. 60601"
+                        className="mt-1 w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), runTransitCalc())}/>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs text-slate-500">Destination ZIP</label>
+                      <input value={destZip} onChange={e => setDestZip(e.target.value)}
+                        placeholder="e.g. 77001"
+                        className="mt-1 w-full border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), runTransitCalc())}/>
+                    </div>
+                  </div>
+                  <button type="button" onClick={runTransitCalc} disabled={calcLoading}
+                    className="w-full py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+                    <Calculator size={12}/> {calcLoading ? 'Calculating…' : 'Calculate Transit Days (Excl. Holidays)'}
+                  </button>
+                  {calcError && (
+                    <div className="flex items-center gap-1.5 text-xs text-red-600">
+                      <AlertCircle size={12}/> {calcError}
+                    </div>
+                  )}
+                  {calcResult && (
+                    <div className="bg-white border border-blue-200 rounded-lg px-3 py-2 text-xs space-y-0.5">
+                      <div className="font-semibold text-blue-800">
+                        {calcResult.originCity} → {calcResult.destCity}
+                      </div>
+                      <div className="text-slate-600">
+                        ~{calcResult.distanceMiles.toLocaleString()} miles
+                        &nbsp;·&nbsp;
+                        <span className="font-bold text-emerald-700">{calcResult.transitDays} transit day{calcResult.transitDays !== 1 ? 's' : ''}</span>
+                        &nbsp;(weekends &amp; holidays excluded)
+                      </div>
+                      <div className="text-slate-400">Transit days auto-filled below ↓</div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Amount + days + ETA */}
