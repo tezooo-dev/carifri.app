@@ -174,6 +174,10 @@ function initDb() {
   safeAlter("ALTER TABLE carriers ADD COLUMN insurance    TEXT DEFAULT '{}'");
   safeAlter("ALTER TABLE carriers ADD COLUMN edi_config   TEXT DEFAULT '{}'");
   safeAlter("ALTER TABLE carriers ADD COLUMN contacts     TEXT DEFAULT '[]'");
+  // Bid enhancements: service type, transit days, accessorial charges
+  safeAlter("ALTER TABLE load_bids ADD COLUMN service_type  TEXT DEFAULT 'FTL'");
+  safeAlter("ALTER TABLE load_bids ADD COLUMN service_days  REAL DEFAULT 0");
+  safeAlter("ALTER TABLE load_bids ADD COLUMN accessorials  TEXT DEFAULT '[]'");
   // US compliance fields
   safeAlter("ALTER TABLE carriers ADD COLUMN mc_number      TEXT DEFAULT ''");
   safeAlter("ALTER TABLE carriers ADD COLUMN dot_number     TEXT DEFAULT ''");

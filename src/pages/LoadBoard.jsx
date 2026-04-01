@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Search, ChevronDown, CheckCircle, XCircle, Truck, Package, MapPin,
   Gavel, Star, Clock, ArrowRight, X, Zap, Filter, Eye, FileText,
+  Plus, Trash2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import AssignCarrierModal from '../components/AssignCarrierModal';
@@ -19,21 +20,58 @@ const STATUS_COLORS = {
   Cancelled:   'bg-red-100 text-red-600',
 };
 
+// ── Service type options ──────────────────────────────────────────────────────
+const SERVICE_TYPES = [
+  { key: 'FTL',         label: 'FTL',         sub: 'Full Truckload'     },
+  { key: 'LTL',         label: 'LTL',         sub: 'Less Than Truckload'},
+  { key: 'Dray',        label: 'Dray',        sub: 'Drayage / Port'     },
+  { key: 'Intermodal',  label: 'Intermodal',  sub: 'Rail + Truck'       },
+  { key: 'Partial',     label: 'Partial',     sub: 'Partial Truckload'  },
+  { key: 'Expedited',   label: 'Expedited',   sub: 'Time-Critical'      },
+];
+
+const ACCESSORIAL_TYPES = [
+  'Fuel Surcharge', 'Detention / Wait Time', 'Lumper Service',
+  'Layover / Stop-Off', 'TONU (Truck Ordered Not Used)',
+  'Overweight / Oversize Permit', 'Liftgate', 'Inside Delivery',
+  'Residential Delivery', 'Notify Before Delivery', 'Re-delivery',
+  'Hazmat Handling', 'Refrigeration', 'Custom / Other',
+];
+
 // ── Bid Modal ─────────────────────────────────────────────────────────────────
 function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid }) {
-  const [bids,       setBids]       = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [bidAmount,  setBidAmount]  = useState('');
-  const [bidCarrier, setBidCarrier] = useState('');
-  const [etaHours,   setEtaHours]   = useState('');
-  const [notes,      setNotes]      = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [bids,        setBids]        = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [bidCarrier,  setBidCarrier]  = useState('');
+  const [bidAmount,   setBidAmount]   = useState('');
+  const [serviceType, setServiceType] = useState('FTL');
+  const [serviceDays, setServiceDays] = useState('');
+  const [etaHours,    setEtaHours]    = useState('');
+  const [notes,       setNotes]       = useState('');
+  const [accessorials, setAccessorials] = useState([]); // [{type, amount, note}]
+  const [submitting,  setSubmitting]  = useState(false);
   const cur = settings.currency;
-  const mkt = MARKETS[settings.market] || MARKETS.kenya;
 
   useEffect(() => {
-    api.get(`/bids/${load.id}`).then(r => setBids(r.data)).catch(()=>{}).finally(()=>setLoading(false));
+    api.get(`/bids/${load.id}`)
+      .then(r => setBids(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [load.id]);
+
+  // Computed total shown in form
+  const accessorialTotal = accessorials.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+  const grandTotal = (parseFloat(bidAmount) || 0) + accessorialTotal;
+
+  function addAccessorial() {
+    setAccessorials(prev => [...prev, { type: 'Fuel Surcharge', amount: '', note: '' }]);
+  }
+  function updateAcc(i, field, val) {
+    setAccessorials(prev => prev.map((a, j) => j === i ? { ...a, [field]: val } : a));
+  }
+  function removeAcc(i) {
+    setAccessorials(prev => prev.filter((_, j) => j !== i));
+  }
 
   async function submitBid(e) {
     e.preventDefault();
@@ -41,11 +79,17 @@ function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid 
     setSubmitting(true);
     try {
       const { data } = await api.post(`/bids/${load.id}`, {
-        carrierId: bidCarrier, amount: parseFloat(bidAmount),
-        etaHours: etaHours ? parseFloat(etaHours) : null, notes,
+        carrierId:   bidCarrier,
+        amount:      parseFloat(bidAmount),
+        serviceType,
+        serviceDays: serviceDays ? parseFloat(serviceDays) : null,
+        etaHours:    etaHours    ? parseFloat(etaHours)    : null,
+        notes,
+        accessorials,
       });
-      setBids(prev => [...prev, data].sort((a,b) => a.amount - b.amount));
-      setBidAmount(''); setEtaHours(''); setNotes(''); setBidCarrier('');
+      setBids(prev => [...prev, data].sort((a, b) => (a.totalAmount||a.amount) - (b.totalAmount||b.amount)));
+      setBidAmount(''); setServiceType('FTL'); setServiceDays('');
+      setEtaHours(''); setNotes(''); setBidCarrier(''); setAccessorials([]);
       onBidSubmit(load.id);
     } finally { setSubmitting(false); }
   }
@@ -54,7 +98,7 @@ function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid 
     setSubmitting(true);
     try {
       await api.post(`/bids/${load.id}/accept/${bid.id}`);
-      onAcceptBid(load.id, bid.carrier_id, bid.amount);
+      onAcceptBid(load.id, bid.carrier_id, bid.totalAmount || bid.amount);
       onClose();
     } finally { setSubmitting(false); }
   }
@@ -63,7 +107,8 @@ function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col">
+        {/* Header */}
         <div className="flex items-start justify-between px-6 py-4 border-b border-slate-200 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -93,7 +138,7 @@ function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid 
               <h3 className="text-sm font-semibold text-slate-900">Current Bids ({bids.length})</h3>
               {bids.length > 0 && (
                 <span className="text-xs text-emerald-600 font-medium">
-                  Lowest: {cur} {bids[0]?.amount?.toLocaleString()}
+                  Best: {cur} {(bids[0]?.totalAmount || bids[0]?.amount || 0).toLocaleString()}
                 </span>
               )}
             </div>
@@ -101,84 +146,190 @@ function BidModal({ load, carriers, settings, onClose, onBidSubmit, onAcceptBid 
             {!loading && bids.length === 0 && (
               <div className="text-center py-6 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
                 <Gavel size={24} className="mx-auto mb-2 opacity-30"/>
-                No bids yet. Be the first to invite a carrier.
+                No bids yet. Invite a carrier below.
               </div>
             )}
             <div className="space-y-2">
-              {bids.map((bid, i) => (
-                <div key={bid.id} className={`flex items-center justify-between p-3 rounded-xl border ${
-                  i===0 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      i===0 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                      {i+1}
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">{bid.carrier_name}</div>
-                      <div className="flex items-center gap-2 text-xs text-slate-400">
-                        <span>{'★'.repeat(Math.round(bid.carrier_rating||4))} {(bid.carrier_rating||4).toFixed(1)}</span>
-                        {bid.eta_hours && <span className="flex items-center gap-0.5"><Clock size={10}/> {bid.eta_hours}h ETA</span>}
-                        {bid.notes && <span>· {bid.notes.slice(0,40)}</span>}
+              {bids.map((bid, i) => {
+                const hasAcc = (bid.accessorials||[]).length > 0;
+                return (
+                  <div key={bid.id} className={`rounded-xl border p-3 ${
+                    i===0 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                          i===0 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{i+1}</div>
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{bid.carrier_name}</div>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400 mt-0.5">
+                            <span>★ {(bid.carrier_rating||4).toFixed(1)}</span>
+                            {bid.service_type && (
+                              <span className="bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-medium">{bid.service_type}</span>
+                            )}
+                            {bid.service_days > 0 && (
+                              <span className="flex items-center gap-0.5"><Clock size={10}/> {bid.service_days} day{bid.service_days!==1?'s':''}</span>
+                            )}
+                            {bid.eta_hours > 0 && (
+                              <span>{bid.eta_hours}h ETA</span>
+                            )}
+                            {bid.notes && <span>· {bid.notes.slice(0, 35)}{bid.notes.length>35?'…':''}</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className={`font-bold text-base ${i===0?'text-emerald-700':'text-slate-800'}`}>
+                          {cur} {(bid.totalAmount||bid.amount||0).toLocaleString()}
+                        </div>
+                        {hasAcc && (
+                          <div className="text-xs text-slate-400">
+                            Base {cur} {(bid.amount||0).toLocaleString()}
+                            {' + '}acc.
+                          </div>
+                        )}
+                        <button onClick={() => acceptBid(bid)} disabled={submitting}
+                          className="text-xs px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 mt-1">
+                          Accept
+                        </button>
                       </div>
                     </div>
+                    {/* Accessorial breakdown */}
+                    {hasAcc && (
+                      <div className="mt-2 pl-9 space-y-0.5">
+                        {(bid.accessorials||[]).map((a, ai) => (
+                          <div key={ai} className="flex justify-between text-xs text-slate-500">
+                            <span>{a.type}{a.note ? ` — ${a.note}` : ''}</span>
+                            <span className="font-medium">{cur} {(parseFloat(a.amount)||0).toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-right">
-                    <div className={`font-bold text-lg ${i===0?'text-emerald-700':'text-slate-800'}`}>
-                      {cur} {(bid.amount||0).toLocaleString()}
-                    </div>
-                    <button onClick={() => acceptBid(bid)} disabled={submitting}
-                      className="text-xs px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 mt-1">
-                      Accept Bid
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
-          {/* Auto-accept hint */}
           {bids.length > 0 && (
             <div className="flex items-center gap-2 px-3 py-2 bg-violet-50 border border-violet-100 rounded-lg text-xs text-violet-700">
               <Zap size={13}/>
-              Tip: Accept the top bid to automatically assign the carrier and move to Booked status.
+              Accept a bid to automatically assign the carrier, lock the freight amount, and move to Booked.
             </div>
           )}
 
-          {/* Submit bid form */}
+          {/* ── Submit bid form ── */}
           {availableCarriers.length > 0 && (
-            <div className="border-t border-slate-200 pt-4">
-              <h3 className="text-sm font-semibold text-slate-900 mb-3">Invite a Carrier to Bid</h3>
-              <form onSubmit={submitBid} className="space-y-3">
-                <select required value={bidCarrier} onChange={e=>setBidCarrier(e.target.value)}
+            <div className="border-t border-slate-200 pt-5 space-y-4">
+              <h3 className="text-sm font-semibold text-slate-900">Invite a Carrier to Bid</h3>
+
+              <form onSubmit={submitBid} className="space-y-4">
+                {/* Carrier selector */}
+                <select required value={bidCarrier} onChange={e => setBidCarrier(e.target.value)}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">Select carrier…</option>
                   {availableCarriers.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.name} — {(c.truckTypes||[]).join(', ')} · ★{c.rating?.toFixed(1)}
-                      {c.verified?' ✓ Verified':''}
+                      {c.name} — {(c.truckTypes||[]).join(', ')} · ★{c.rating?.toFixed(1)}{c.verified?' ✓':''}
                     </option>
                   ))}
                 </select>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-slate-500">Bid Amount ({cur}) *</label>
-                    <input required type="number" step="1" value={bidAmount} onChange={e=>setBidAmount(e.target.value)}
+
+                {/* Service type buttons */}
+                <div>
+                  <label className="text-xs font-medium text-slate-600 mb-2 block">Service Type *</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {SERVICE_TYPES.map(s => (
+                      <button key={s.key} type="button" onClick={() => setServiceType(s.key)}
+                        className={`flex flex-col items-center py-2.5 px-2 rounded-xl border-2 text-xs font-semibold transition-colors ${
+                          serviceType === s.key
+                            ? 'border-violet-500 bg-violet-50 text-violet-700'
+                            : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                        <span className="font-bold">{s.label}</span>
+                        <span className="font-normal text-slate-400 text-[10px] mt-0.5">{s.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Amount + days + ETA */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-1">
+                    <label className="text-xs font-medium text-slate-600">Base Freight Rate ({cur}) *</label>
+                    <input required type="number" step="1" min="0" value={bidAmount}
+                      onChange={e => setBidAmount(e.target.value)}
                       className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder={`e.g. ${Math.round((load.freightAmount||100000)*0.9)}`}/>
+                      placeholder={`${Math.round((load.freightAmount||100000)*0.9)}`}/>
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500">ETA (hours)</label>
-                    <input type="number" step="0.5" value={etaHours} onChange={e=>setEtaHours(e.target.value)}
+                    <label className="text-xs font-medium text-slate-600">Transit Days</label>
+                    <input type="number" step="0.5" min="0" value={serviceDays}
+                      onChange={e => setServiceDays(e.target.value)}
+                      className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="e.g. 2"/>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">ETA (hours)</label>
+                    <input type="number" step="0.5" min="0" value={etaHours}
+                      onChange={e => setEtaHours(e.target.value)}
                       className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="e.g. 8"/>
                   </div>
                 </div>
-                <input type="text" value={notes} onChange={e=>setNotes(e.target.value)}
-                  placeholder="Notes (optional)…"
+
+                {/* Accessorial charges */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium text-slate-600">Accessorial Charges (if applicable)</label>
+                    <button type="button" onClick={addAccessorial}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium">
+                      <Plus size={12}/> Add Charge
+                    </button>
+                  </div>
+                  {accessorials.length === 0 && (
+                    <p className="text-xs text-slate-400 italic">No extra charges — click "Add Charge" to include detention, fuel surcharge, lumper, etc.</p>
+                  )}
+                  <div className="space-y-2">
+                    {accessorials.map((a, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
+                        <select value={a.type} onChange={e => updateAcc(i, 'type', e.target.value)}
+                          className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                          {ACCESSORIAL_TYPES.map(t => <option key={t}>{t}</option>)}
+                        </select>
+                        <input type="number" min="0" step="1" value={a.amount}
+                          onChange={e => updateAcc(i, 'amount', e.target.value)}
+                          placeholder="Amount"
+                          className="w-24 border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                        <input type="text" value={a.note}
+                          onChange={e => updateAcc(i, 'note', e.target.value)}
+                          placeholder="Note (opt.)"
+                          className="w-28 border border-slate-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"/>
+                        <button type="button" onClick={() => removeAcc(i)}
+                          className="text-red-400 hover:text-red-600 shrink-0"><Trash2 size={13}/></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Total preview */}
+                {grandTotal > 0 && (
+                  <div className="flex justify-between items-center bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5 text-sm">
+                    <span className="text-slate-600">
+                      Base {cur} {(parseFloat(bidAmount)||0).toLocaleString()}
+                      {accessorialTotal > 0 && <> + acc. {cur} {accessorialTotal.toLocaleString()}</>}
+                    </span>
+                    <span className="font-bold text-violet-700 text-base">
+                      Total: {cur} {grandTotal.toLocaleString()}
+                    </span>
+                  </div>
+                )}
+
+                {/* Notes */}
+                <input type="text" value={notes} onChange={e => setNotes(e.target.value)}
+                  placeholder="Additional notes to the broker (optional)…"
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+
                 <button type="submit" disabled={submitting}
                   className="w-full py-2.5 bg-violet-600 text-white rounded-xl text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                  <Gavel size={14}/> {submitting ? 'Submitting…' : 'Submit Bid'}
+                  <Gavel size={14}/> {submitting ? 'Submitting…' : `Submit Bid — ${cur} ${grandTotal.toLocaleString()}`}
                 </button>
               </form>
             </div>
