@@ -4,8 +4,7 @@ import { Calculator, CheckCircle, MapPin, Clock, AlertCircle, Loader2 } from 'lu
 import { useApp } from '../context/AppContext';
 import { TRUCK_TYPES, COMMODITIES } from '../data/store';
 import { estimateTransit } from '../lib/transitCalc';
-
-const CITIES = ['Nairobi', 'Mombasa', 'Kisumu', 'Eldoret', 'Nakuru', 'Thika', 'Machakos', 'Nyeri', 'Malindi', 'Garissa'];
+import AddressAutocomplete from '../components/AddressAutocomplete';
 
 const empty = {
   origin: '',
@@ -31,14 +30,17 @@ export default function PostLoad() {
   const [form, setForm] = useState(empty);
   const [submitted, setSubmitted] = useState(false);
 
-  // ZIP transit calculator state
-  const [originZip, setOriginZip]     = useState('');
-  const [destZip, setDestZip]         = useState('');
-  const [zipCountry, setZipCountry]   = useState('us');
-  const [transitResult, setTransitResult] = useState(null);
-  const [transitLoading, setTransitLoading] = useState(false);
-  const [transitError, setTransitError]   = useState('');
-  const [autoCalcDate, setAutoCalcDate]   = useState(false);
+  // Address display values (shown in the autocomplete inputs)
+  const [originDisplay, setOriginDisplay]   = useState('');
+  const [destDisplay,   setDestDisplay]     = useState('');
+
+  // ZIP / transit calculator state
+  const [originZip,     setOriginZip]       = useState('');
+  const [destZip,       setDestZip]         = useState('');
+  const [transitResult, setTransitResult]   = useState(null);
+  const [transitLoading,setTransitLoading]  = useState(false);
+  const [transitError,  setTransitError]    = useState('');
+  const [autoCalcDate,  setAutoCalcDate]    = useState(false);
   const debounceRef = useRef(null);
 
   // Auto-trigger transit calc when both ZIPs are filled (debounced 600ms)
@@ -50,16 +52,15 @@ export default function PostLoad() {
         setTransitLoading(true);
         try {
           const startDate = form.pickupDate ? new Date(form.pickupDate + 'T00:00:00') : new Date();
-          const result = await estimateTransit(originZip.trim(), destZip.trim(), zipCountry, startDate);
+          const result    = await estimateTransit(originZip, destZip, 'us', startDate);
           setTransitResult(result);
-          // Auto-fill delivery date
-          if (result && result.deliveryDate) {
+          if (result?.deliveryDate) {
             const iso = result.deliveryDate.toISOString().slice(0, 10);
             setForm(f => ({ ...f, deliveryDate: iso }));
             setAutoCalcDate(true);
           }
         } catch (err) {
-          setTransitError(err.message || 'Could not calculate transit. Check ZIP codes.');
+          setTransitError(err.message || 'Could not calculate transit. Check the addresses.');
           setTransitResult(null);
         } finally {
           setTransitLoading(false);
@@ -70,8 +71,8 @@ export default function PostLoad() {
       setTransitError('');
     }
     return () => clearTimeout(debounceRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [originZip, destZip, zipCountry, form.pickupDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originZip, destZip, form.pickupDate]);
 
   const commission = form.freightAmount
     ? Math.round(parseFloat(form.freightAmount) * rate)
@@ -86,33 +87,48 @@ export default function PostLoad() {
     if (!s) { set('shipperId', ''); return; }
     setForm(f => ({
       ...f,
-      shipperId: s.id,
+      shipperId:      s.id,
       shipperContact: s.contact,
-      shipperPhone: s.phone,
-      shipperEmail: s.email,
+      shipperPhone:   s.phone,
+      shipperEmail:   s.email,
     }));
+  }
+
+  // Called when user picks a suggestion from the autocomplete
+  function handleOriginSelect(place) {
+    const city = [place.city, place.state].filter(Boolean).join(', ');
+    setOriginDisplay(place.display);
+    set('origin', city || place.display);
+    if (place.postcode) setOriginZip(place.postcode.replace(/\s/g, ''));
+  }
+
+  function handleDestSelect(place) {
+    const city = [place.city, place.state].filter(Boolean).join(', ');
+    setDestDisplay(place.display);
+    set('destination', city || place.display);
+    if (place.postcode) setDestZip(place.postcode.replace(/\s/g, ''));
   }
 
   function handleSubmit(e) {
     e.preventDefault();
-    const id = `FL-${String(Date.now()).slice(-4)}`;
+    const id  = `FL-${String(Date.now()).slice(-4)}`;
     const now = new Date().toLocaleString('en-KE', { hour12: false }).replace(',', '');
     addLoad({
       id,
       ...form,
-      weight: Number(form.weight),
+      weight:        Number(form.weight),
       freightAmount: Number(form.freightAmount),
-      advance: Number(form.advance) || 0,
+      advance:       Number(form.advance) || 0,
       commission,
       commissionReceived: false,
-      status: 'Available',
+      status:   'Available',
       carrierId: null,
       timeline: [
-        { event: 'Load Posted', time: now, done: true },
-        { event: 'Carrier Assigned', time: '', done: false },
-        { event: 'Picked Up', time: '', done: false },
-        { event: 'In Transit', time: '', done: false },
-        { event: 'Delivered', time: '', done: false },
+        { event: 'Load Posted',       time: now, done: true  },
+        { event: 'Carrier Assigned',  time: '',  done: false },
+        { event: 'Picked Up',         time: '',  done: false },
+        { event: 'In Transit',        time: '',  done: false },
+        { event: 'Delivered',         time: '',  done: false },
       ],
     });
     setSubmitted(true);
@@ -133,7 +149,16 @@ export default function PostLoad() {
         </p>
         <div className="flex gap-3">
           <button
-            onClick={() => { setForm(empty); setSubmitted(false); }}
+            onClick={() => {
+              setForm(empty);
+              setOriginDisplay('');
+              setDestDisplay('');
+              setOriginZip('');
+              setDestZip('');
+              setTransitResult(null);
+              setAutoCalcDate(false);
+              setSubmitted(false);
+            }}
             className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-medium hover:bg-slate-50"
           >
             Post Another
@@ -157,34 +182,58 @@ export default function PostLoad() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Route */}
+
+        {/* ── Route ───────────────────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <h3 className="font-semibold text-slate-900 mb-4 text-sm uppercase tracking-wide">Route</h3>
+
           <div className="grid grid-cols-2 gap-4">
+            {/* Origin address */}
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Origin *</label>
-              <select
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                Origin *
+                {originZip && (
+                  <span className="ml-2 font-mono text-[10px] text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">
+                    {originZip}
+                  </span>
+                )}
+              </label>
+              <AddressAutocomplete
+                value={originDisplay}
+                onChange={v => {
+                  setOriginDisplay(v);
+                  // If user clears the field, reset
+                  if (!v) { set('origin', ''); setOriginZip(''); setTransitResult(null); }
+                }}
+                onSelect={handleOriginSelect}
+                placeholder="Search shipper city or address…"
                 required
-                value={form.origin}
-                onChange={e => set('origin', e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select city</option>
-                {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              />
             </div>
+
+            {/* Destination address */}
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Destination *</label>
-              <select
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                Destination *
+                {destZip && (
+                  <span className="ml-2 font-mono text-[10px] text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">
+                    {destZip}
+                  </span>
+                )}
+              </label>
+              <AddressAutocomplete
+                value={destDisplay}
+                onChange={v => {
+                  setDestDisplay(v);
+                  if (!v) { set('destination', ''); setDestZip(''); setTransitResult(null); }
+                }}
+                onSelect={handleDestSelect}
+                placeholder="Search consignee city or address…"
                 required
-                value={form.destination}
-                onChange={e => set('destination', e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select city</option>
-                {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              />
             </div>
+
+            {/* Pickup date */}
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1.5">Pickup Date *</label>
               <input
@@ -195,6 +244,8 @@ export default function PostLoad() {
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
+            {/* Delivery date — auto-filled when transit calc runs */}
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1.5">
                 Delivery Date *
@@ -214,131 +265,82 @@ export default function PostLoad() {
             </div>
           </div>
 
-          {/* ZIP Transit Calculator */}
-          <div className="mt-5 pt-4 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <MapPin size={14} className="text-blue-500" />
-                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
-                  Transit Calculator
-                </span>
-                <span className="text-[10px] text-slate-400 font-normal normal-case">
-                  — auto-fills service days &amp; delivery date
-                </span>
-              </div>
-              {/* Country toggle */}
-              <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
-                <button
-                  type="button"
-                  onClick={() => setZipCountry('us')}
-                  className={`px-2.5 py-1 transition-colors ${zipCountry === 'us' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  🇺🇸 US
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setZipCountry('ca')}
-                  className={`px-2.5 py-1 border-l border-slate-200 transition-colors ${zipCountry === 'ca' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  🇨🇦 CA
-                </button>
-              </div>
+          {/* ── Transit result card ─────────────────────────────────────── */}
+          {(transitLoading || transitError || transitResult) && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+
+              {transitLoading && (
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <Loader2 size={15} className="animate-spin" />
+                  <span>Calculating route distance &amp; transit days…</span>
+                </div>
+              )}
+
+              {transitError && !transitLoading && (
+                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
+                  <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                  <span>{transitError}</span>
+                </div>
+              )}
+
+              {transitResult && !transitLoading && !transitError && (
+                <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <Clock size={14} className="text-blue-600" />
+                    <span className="text-xs font-semibold text-blue-800">Transit Estimate</span>
+                    <span className="text-[10px] text-blue-400 ml-1">— HOS 500 mi/day · holidays excluded</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center mb-2.5">
+                    <div className="bg-white rounded-lg p-2 border border-blue-100">
+                      <div className="text-lg font-bold text-slate-900">
+                        {transitResult.distanceMiles.toLocaleString()}
+                      </div>
+                      <div className="text-[10px] text-slate-500">miles</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-2 border border-blue-100">
+                      <div className="text-lg font-bold text-slate-900">
+                        {transitResult.distanceKm.toLocaleString()}
+                      </div>
+                      <div className="text-[10px] text-slate-500">km</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-2 border border-blue-100">
+                      <div className="text-lg font-bold text-blue-700">
+                        {transitResult.transitDays}
+                      </div>
+                      <div className="text-[10px] text-slate-500">transit days</div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-600 space-y-0.5">
+                    <div>
+                      <span className="text-slate-400">From: </span>
+                      <span className="font-medium">{transitResult.originCity}</span>
+                      <span className="text-slate-300 mx-1.5">→</span>
+                      <span className="font-medium">{transitResult.destCity}</span>
+                    </div>
+                    {form.deliveryDate && (
+                      <div className="mt-1.5 text-blue-700 font-medium">
+                        Suggested delivery:{' '}
+                        {new Date(form.deliveryDate + 'T00:00:00').toLocaleDateString('en-US', {
+                          weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
+          )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                  Shipper ZIP {zipCountry === 'ca' ? '(Postal Code)' : ''}
-                </label>
-                <input
-                  type="text"
-                  value={originZip}
-                  onChange={e => setOriginZip(e.target.value.toUpperCase())}
-                  placeholder={zipCountry === 'ca' ? 'e.g. M5V 3A8' : 'e.g. 90210'}
-                  maxLength={7}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                  Consignee ZIP {zipCountry === 'ca' ? '(Postal Code)' : ''}
-                </label>
-                <input
-                  type="text"
-                  value={destZip}
-                  onChange={e => setDestZip(e.target.value.toUpperCase())}
-                  placeholder={zipCountry === 'ca' ? 'e.g. V6B 1A1' : 'e.g. 10001'}
-                  maxLength={7}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                />
-              </div>
-            </div>
-
-            {/* Loading state */}
-            {transitLoading && (
-              <div className="mt-3 flex items-center gap-2 text-sm text-blue-600">
-                <Loader2 size={15} className="animate-spin" />
-                <span>Calculating route...</span>
-              </div>
-            )}
-
-            {/* Error state */}
-            {transitError && !transitLoading && (
-              <div className="mt-3 flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
-                <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                <span>{transitError}</span>
-              </div>
-            )}
-
-            {/* Result card */}
-            {transitResult && !transitLoading && !transitError && (
-              <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <Clock size={14} className="text-blue-600" />
-                  <span className="text-xs font-semibold text-blue-800">PC Miler Estimate</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-center mb-2.5">
-                  <div className="bg-white rounded-lg p-2 border border-blue-100">
-                    <div className="text-lg font-bold text-slate-900">
-                      {transitResult.distanceMiles.toLocaleString()}
-                    </div>
-                    <div className="text-[10px] text-slate-500">miles</div>
-                  </div>
-                  <div className="bg-white rounded-lg p-2 border border-blue-100">
-                    <div className="text-lg font-bold text-slate-900">
-                      {transitResult.distanceKm.toLocaleString()}
-                    </div>
-                    <div className="text-[10px] text-slate-500">km</div>
-                  </div>
-                  <div className="bg-white rounded-lg p-2 border border-blue-100">
-                    <div className="text-lg font-bold text-blue-700">
-                      {transitResult.transitDays}
-                    </div>
-                    <div className="text-[10px] text-slate-500">transit days</div>
-                  </div>
-                </div>
-                <div className="text-xs text-slate-600 space-y-0.5">
-                  <div>
-                    <span className="text-slate-400">From: </span>
-                    <span className="font-medium">{transitResult.originCity}</span>
-                    <span className="text-slate-300 mx-1.5">→</span>
-                    <span className="font-medium">{transitResult.destCity}</span>
-                  </div>
-                  <div className="text-slate-400">
-                    Weekends &amp; US/Canadian statutory holidays excluded · HOS 500 mi/day standard
-                  </div>
-                  {form.deliveryDate && (
-                    <div className="mt-1.5 text-blue-700 font-medium">
-                      Suggested delivery: {new Date(form.deliveryDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Hint when no ZIP has been resolved yet */}
+          {!transitLoading && !transitResult && !transitError && (!originZip || !destZip) && (
+            <p className="mt-3 text-[11px] text-slate-400 flex items-center gap-1">
+              <MapPin size={11} />
+              Select an origin and destination address above — transit days and delivery date will auto-calculate.
+            </p>
+          )}
         </div>
 
-        {/* Cargo */}
+        {/* ── Cargo ───────────────────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <h3 className="font-semibold text-slate-900 mb-4 text-sm uppercase tracking-wide">Cargo Details</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -390,7 +392,6 @@ export default function PostLoad() {
               </label>
             </div>
           </div>
-
           <div className="mt-4">
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Special Instructions</label>
             <textarea
@@ -403,7 +404,7 @@ export default function PostLoad() {
           </div>
         </div>
 
-        {/* Finance */}
+        {/* ── Financials ──────────────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <h3 className="font-semibold text-slate-900 mb-4 text-sm uppercase tracking-wide">Financials</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -431,8 +432,6 @@ export default function PostLoad() {
               />
             </div>
           </div>
-
-          {/* Commission calculator */}
           {commission > 0 && (
             <div className="mt-4 flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
               <Calculator size={18} className="text-emerald-600 shrink-0" />
@@ -447,7 +446,7 @@ export default function PostLoad() {
           )}
         </div>
 
-        {/* Shipper */}
+        {/* ── Shipper / Client ─────────────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <h3 className="font-semibold text-slate-900 mb-4 text-sm uppercase tracking-wide">Shipper / Client</h3>
           <div className="mb-4">
