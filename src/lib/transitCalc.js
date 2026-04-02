@@ -181,10 +181,15 @@ export async function estimateTransit(originZip, destZip, country = 'us', startD
   const straightKm = haversineKm(o.lat, o.lon, d.lat, d.lon);
   const roadKm     = straightKm * ROAD_FACTOR;
   const transitDays = calcTransitDays(roadKm, startDate);
+  // Compute actual delivery date: startDate + transitDays calendar days
+  const deliveryDate = new Date(startDate);
+  deliveryDate.setHours(0, 0, 0, 0);
+  deliveryDate.setDate(deliveryDate.getDate() + transitDays);
   return {
     distanceKm:    Math.round(roadKm),
     distanceMiles: Math.round(roadKm * 0.621371),
     transitDays,
+    deliveryDate,
     originCity:    `${o.city}, ${o.state}`,
     destCity:      `${d.city}, ${d.state}`,
   };

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calculator, CheckCircle } from 'lucide-react';
+import { Calculator, CheckCircle, MapPin, Clock, AlertCircle, Loader2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { TRUCK_TYPES, COMMODITIES } from '../data/store';
+import { estimateTransit } from '../lib/transitCalc';
 
 const CITIES = ['Nairobi', 'Mombasa', 'Kisumu', 'Eldoret', 'Nakuru', 'Thika', 'Machakos', 'Nyeri', 'Malindi', 'Garissa'];
 
@@ -29,6 +30,48 @@ export default function PostLoad() {
   const navigate = useNavigate();
   const [form, setForm] = useState(empty);
   const [submitted, setSubmitted] = useState(false);
+
+  // ZIP transit calculator state
+  const [originZip, setOriginZip]     = useState('');
+  const [destZip, setDestZip]         = useState('');
+  const [zipCountry, setZipCountry]   = useState('us');
+  const [transitResult, setTransitResult] = useState(null);
+  const [transitLoading, setTransitLoading] = useState(false);
+  const [transitError, setTransitError]   = useState('');
+  const [autoCalcDate, setAutoCalcDate]   = useState(false);
+  const debounceRef = useRef(null);
+
+  // Auto-trigger transit calc when both ZIPs are filled (debounced 600ms)
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    if (originZip.length >= 5 && destZip.length >= 5) {
+      setTransitError('');
+      debounceRef.current = setTimeout(async () => {
+        setTransitLoading(true);
+        try {
+          const startDate = form.pickupDate ? new Date(form.pickupDate + 'T00:00:00') : new Date();
+          const result = await estimateTransit(originZip.trim(), destZip.trim(), zipCountry, startDate);
+          setTransitResult(result);
+          // Auto-fill delivery date
+          if (result && result.deliveryDate) {
+            const iso = result.deliveryDate.toISOString().slice(0, 10);
+            setForm(f => ({ ...f, deliveryDate: iso }));
+            setAutoCalcDate(true);
+          }
+        } catch (err) {
+          setTransitError(err.message || 'Could not calculate transit. Check ZIP codes.');
+          setTransitResult(null);
+        } finally {
+          setTransitLoading(false);
+        }
+      }, 600);
+    } else {
+      setTransitResult(null);
+      setTransitError('');
+    }
+    return () => clearTimeout(debounceRef.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originZip, destZip, zipCountry, form.pickupDate]);
 
   const commission = form.freightAmount
     ? Math.round(parseFloat(form.freightAmount) * rate)
@@ -153,15 +196,145 @@ export default function PostLoad() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Delivery Date *</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                Delivery Date *
+                {autoCalcDate && transitResult && (
+                  <span className="ml-2 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
+                    Auto-calculated
+                  </span>
+                )}
+              </label>
               <input
                 type="date"
                 required
                 value={form.deliveryDate}
-                onChange={e => set('deliveryDate', e.target.value)}
+                onChange={e => { set('deliveryDate', e.target.value); setAutoCalcDate(false); }}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+
+          {/* ZIP Transit Calculator */}
+          <div className="mt-5 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5">
+                <MapPin size={14} className="text-blue-500" />
+                <span className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                  Transit Calculator
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal normal-case">
+                  — auto-fills service days &amp; delivery date
+                </span>
+              </div>
+              {/* Country toggle */}
+              <div className="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => setZipCountry('us')}
+                  className={`px-2.5 py-1 transition-colors ${zipCountry === 'us' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  🇺🇸 US
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setZipCountry('ca')}
+                  className={`px-2.5 py-1 border-l border-slate-200 transition-colors ${zipCountry === 'ca' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  🇨🇦 CA
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  Shipper ZIP {zipCountry === 'ca' ? '(Postal Code)' : ''}
+                </label>
+                <input
+                  type="text"
+                  value={originZip}
+                  onChange={e => setOriginZip(e.target.value.toUpperCase())}
+                  placeholder={zipCountry === 'ca' ? 'e.g. M5V 3A8' : 'e.g. 90210'}
+                  maxLength={7}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  Consignee ZIP {zipCountry === 'ca' ? '(Postal Code)' : ''}
+                </label>
+                <input
+                  type="text"
+                  value={destZip}
+                  onChange={e => setDestZip(e.target.value.toUpperCase())}
+                  placeholder={zipCountry === 'ca' ? 'e.g. V6B 1A1' : 'e.g. 10001'}
+                  maxLength={7}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Loading state */}
+            {transitLoading && (
+              <div className="mt-3 flex items-center gap-2 text-sm text-blue-600">
+                <Loader2 size={15} className="animate-spin" />
+                <span>Calculating route...</span>
+              </div>
+            )}
+
+            {/* Error state */}
+            {transitError && !transitLoading && (
+              <div className="mt-3 flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
+                <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                <span>{transitError}</span>
+              </div>
+            )}
+
+            {/* Result card */}
+            {transitResult && !transitLoading && !transitError && (
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Clock size={14} className="text-blue-600" />
+                  <span className="text-xs font-semibold text-blue-800">PC Miler Estimate</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-center mb-2.5">
+                  <div className="bg-white rounded-lg p-2 border border-blue-100">
+                    <div className="text-lg font-bold text-slate-900">
+                      {transitResult.distanceMiles.toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-slate-500">miles</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 border border-blue-100">
+                    <div className="text-lg font-bold text-slate-900">
+                      {transitResult.distanceKm.toLocaleString()}
+                    </div>
+                    <div className="text-[10px] text-slate-500">km</div>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 border border-blue-100">
+                    <div className="text-lg font-bold text-blue-700">
+                      {transitResult.transitDays}
+                    </div>
+                    <div className="text-[10px] text-slate-500">transit days</div>
+                  </div>
+                </div>
+                <div className="text-xs text-slate-600 space-y-0.5">
+                  <div>
+                    <span className="text-slate-400">From: </span>
+                    <span className="font-medium">{transitResult.originCity}</span>
+                    <span className="text-slate-300 mx-1.5">→</span>
+                    <span className="font-medium">{transitResult.destCity}</span>
+                  </div>
+                  <div className="text-slate-400">
+                    Weekends &amp; US/Canadian statutory holidays excluded · HOS 500 mi/day standard
+                  </div>
+                  {form.deliveryDate && (
+                    <div className="mt-1.5 text-blue-700 font-medium">
+                      Suggested delivery: {new Date(form.deliveryDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
