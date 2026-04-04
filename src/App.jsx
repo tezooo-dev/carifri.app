@@ -21,6 +21,7 @@ import Billing         from './pages/Billing';
 import Tickets         from './pages/Tickets';
 import RoleManagement  from './pages/RoleManagement';
 import CarrierPortal   from './pages/CarrierPortal';
+import Companies       from './pages/Companies';
 import Landing         from './pages/Landing';
 import UserGuide       from './pages/UserGuide';
 import PrivacyPolicy   from './pages/PrivacyPolicy';
@@ -94,6 +95,7 @@ function AppRoutes() {
               <Route path="/tickets"    element={<Tickets/>}/>
               <Route path="/roles"          element={<RoleManagement/>}/>
               <Route path="/carrier-portal" element={<CarrierPortal/>}/>
+              <Route path="/companies"  element={<Companies/>}/>
               <Route path="/"           element={<Navigate to="/dashboard" replace/>}/>
             </Routes>
           </AuthenticatedLayout>

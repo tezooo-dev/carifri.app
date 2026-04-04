@@ -2,9 +2,8 @@ require('dotenv').config();
 const express  = require('express');
 const cors     = require('cors');
 const helmet   = require('helmet');
-const { initDb } = require('./db');
-const { seedDatabase } = require('./seed');
-const { startBackupSchedule } = require('./services/backup');
+const { testConnection, one } = require('./lib/db');
+const { seedDatabase }        = require('./seed');
 
 const authRouter           = require('./routes/auth');
 const passwordResetRouter  = require('./routes/password-reset');
@@ -21,6 +20,7 @@ const billingRouter        = require('./routes/billing');
 const ticketsRouter        = require('./routes/tickets');
 const rolesRouter          = require('./routes/roles');
 const carrierPortalRouter  = require('./routes/carrier-portal');
+const companiesRouter      = require('./routes/companies');
 
 const app  = express();
 const PORT = process.env.API_PORT || 3001;
@@ -33,7 +33,7 @@ app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 app.use('/api/auth',            authRouter);
-app.use('/api/auth',            passwordResetRouter);   // forgot-password + reset-password
+app.use('/api/auth',            passwordResetRouter);
 app.use('/api/loads',           loadsRouter);
 app.use('/api/carriers',        carriersRouter);
 app.use('/api/carrier-details', carrierDetailsRouter);
@@ -47,23 +47,33 @@ app.use('/api/billing',         billingRouter);
 app.use('/api/tickets',         ticketsRouter);
 app.use('/api/roles',           rolesRouter);
 app.use('/api/carrier-portal',  carrierPortalRouter);
-app.get('/api/health',          (_, res) => res.json({ status: 'ok', version: '3.0.0' }));
+app.use('/api/companies',       companiesRouter);
+app.get('/api/health',          (_, res) => res.json({ status: 'ok', version: '4.0.0', db: 'supabase' }));
 
 // ── Start ──────────────────────────────────────────────────────────────────────
-const db = initDb();
-const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
-if (userCount === 0) {
-  seedDatabase(db);
-  console.log('✅ Database seeded with Kenya / India / Canada / US data');
+async function start() {
+  try {
+    await testConnection();
+
+    // Seed if no companies exist yet
+    const existing = await one('SELECT COUNT(*) as c FROM companies');
+    if (parseInt(existing.c) === 0) {
+      await seedDatabase();
+    }
+
+    app.listen(PORT, () => {
+      console.log(`🚚 FreightLink API  →  http://localhost:${PORT}`);
+      console.log('   Demo logins:');
+      console.log('   🔐 it@freightlink.io          /  super123   (super_admin)');
+      console.log('   🇰🇪 admin@freightlink.co.ke   /  admin123');
+      console.log('   🇮🇳 admin@freightlink.in      /  admin123');
+      console.log('   🇨🇦 admin@freightlink.ca      /  admin123');
+      console.log('   🇺🇸 admin@freightlink.us      /  admin123');
+    });
+  } catch (err) {
+    console.error('❌ Startup failed:', err.message);
+    process.exit(1);
+  }
 }
 
-startBackupSchedule();
-
-app.listen(PORT, () => {
-  console.log(`🚚 FreightLink API  →  http://localhost:${PORT}`);
-  console.log('   Demo logins:');
-  console.log('   🇰🇪 admin@freightlink.co.ke  /  admin123');
-  console.log('   🇮🇳 admin@freightlink.in     /  admin123');
-  console.log('   🇨🇦 admin@freightlink.ca     /  admin123');
-  console.log('   🇺🇸 admin@freightlink.us     /  admin123');
-});
+start();

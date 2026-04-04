@@ -1,46 +1,126 @@
 const router = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
-const { getDb } = require('../db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { one, all, run } = require('../lib/db');
+const { requireAuth, requireRole, companyId } = require('../middleware/auth');
 
-// All role endpoints require admin or super_admin
 const adminOnly = [requireAuth, requireRole('admin', 'super_admin')];
 
-// GET /api/roles  — list custom roles for market
-router.get('/', requireAuth, (req, res) => {
-  const mkt = req.query.market || req.user.market || 'kenya';
-  const rows = getDb().prepare('SELECT * FROM custom_roles WHERE market = ? ORDER BY name').all(mkt);
-  res.json(rows.map(r => ({ ...r, permissions: JSON.parse(r.permissions || '[]') })));
+// ---------------------------------------------------------------------------
+// GET /  — list custom roles for the company / market
+// ---------------------------------------------------------------------------
+router.get('/', requireAuth, async (req, res) => {
+  try {
+    const mkt = req.query.market || req.user.market || 'kenya';
+    const cid = companyId(req);
+
+    let sql = 'SELECT * FROM custom_roles WHERE market = $1';
+    const params = [mkt];
+
+    if (cid) {
+      sql += ' AND company_id = $2';
+      params.push(cid);
+    }
+
+    sql += ' ORDER BY name';
+
+    const rows = await all(sql, params);
+    // permissions is JSONB — already a JS array, no JSON.parse needed
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// POST /api/roles  — create custom role
-router.post('/', ...adminOnly, (req, res) => {
-  const { name, description, permissions, market } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
-  const mkt = market || req.user.market || 'kenya';
-  const id  = uuidv4();
-  getDb().prepare(`
-    INSERT INTO custom_roles (id, market, name, description, permissions, created_by)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(id, mkt, name.trim(), description || '', JSON.stringify(permissions || []), req.user.id);
-  res.status(201).json(getDb().prepare('SELECT * FROM custom_roles WHERE id = ?').get(id));
+// ---------------------------------------------------------------------------
+// POST /  — create a custom role
+// ---------------------------------------------------------------------------
+router.post('/', ...adminOnly, async (req, res) => {
+  try {
+    const { name, description, permissions, market } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'name is required' });
+
+    const mkt = market || req.user.market || 'kenya';
+    const cid = companyId(req);
+    const id = uuidv4();
+
+    const row = await one(
+      `INSERT INTO custom_roles (id, company_id, market, name, description, permissions, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        id,
+        cid,
+        mkt,
+        name.trim(),
+        description || '',
+        permissions || [],   // JSONB — pass JS array directly
+        req.user.sub,
+      ]
+    );
+
+    res.status(201).json(row);
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A role with that name already exists' });
+    }
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// PUT /api/roles/:id  — update custom role
-router.put('/:id', ...adminOnly, (req, res) => {
-  const { name, description, permissions } = req.body;
-  const role = getDb().prepare('SELECT * FROM custom_roles WHERE id = ?').get(req.params.id);
-  if (!role) return res.status(404).json({ error: 'Role not found' });
-  getDb().prepare('UPDATE custom_roles SET name = ?, description = ?, permissions = ? WHERE id = ?')
-    .run(name || role.name, description ?? role.description, JSON.stringify(permissions || []), req.params.id);
-  res.json(getDb().prepare('SELECT * FROM custom_roles WHERE id = ?').get(req.params.id));
+// ---------------------------------------------------------------------------
+// PUT /:id  — replace a custom role
+// ---------------------------------------------------------------------------
+router.put('/:id', ...adminOnly, async (req, res) => {
+  try {
+    const cid = companyId(req);
+    const cidFilter = cid ? ' AND company_id = $2' : '';
+    const findParams = cid ? [req.params.id, cid] : [req.params.id];
+
+    const role = await one(
+      `SELECT * FROM custom_roles WHERE id = $1${cidFilter}`,
+      findParams
+    );
+    if (!role) return res.status(404).json({ error: 'Role not found' });
+
+    const { name, description, permissions } = req.body;
+
+    const updated = await one(
+      `UPDATE custom_roles
+          SET name = $1, description = $2, permissions = $3
+        WHERE id = $4
+        RETURNING *`,
+      [
+        name || role.name,
+        description ?? role.description,
+        permissions || [],   // JSONB — pass JS array directly
+        req.params.id,
+      ]
+    );
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// DELETE /api/roles/:id  — delete custom role
-router.delete('/:id', ...adminOnly, (req, res) => {
-  const info = getDb().prepare('DELETE FROM custom_roles WHERE id = ?').run(req.params.id);
-  if (info.changes === 0) return res.status(404).json({ error: 'Not found' });
-  res.json({ ok: true });
+// ---------------------------------------------------------------------------
+// DELETE /:id
+// ---------------------------------------------------------------------------
+router.delete('/:id', ...adminOnly, async (req, res) => {
+  try {
+    const cid = companyId(req);
+    const cidFilter = cid ? ' AND company_id = $2' : '';
+    const params = cid ? [req.params.id, cid] : [req.params.id];
+
+    const result = await run(
+      `DELETE FROM custom_roles WHERE id = $1${cidFilter}`,
+      params
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

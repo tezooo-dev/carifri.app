@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, LayoutGrid, PlusCircle, Truck, Building2,
   MapPin, DollarSign, BarChart2, Settings, Menu, X, Bot, LogOut,
-  BookOpen, Users, ShieldCheck, UserCog, CreditCard, Ticket, Shield,
+  BookOpen, Users, ShieldCheck, UserCog, CreditCard, Ticket, Shield, Globe,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
@@ -25,6 +25,7 @@ const NAV_ALL = [
   { to: '/reports',   label: 'Reports',         icon: BarChart2,       perm: 'reports.view'    },
   { to: '/ai',        label: 'AI Dispatch',     icon: Bot,             perm: 'ai.use'          },
   { to: '/tickets',   label: 'Support Tickets', icon: Ticket,          perm: 'tickets.view'    },
+  { to: '/companies', label: 'Companies',       icon: Globe,           perm: null, superAdminOnly: true },
   { to: '/help',      label: 'Help & Guides',   icon: BookOpen,        perm: 'help.view'       },
 ];
 
@@ -46,8 +47,11 @@ export default function Layout({ children }) {
   const roleMeta = ROLE_META[role] || ROLE_META.operations;
   const RoleIcon = roleMeta.icon;
 
-  // Filter nav by permission
-  const nav = NAV_ALL.filter(item => !item.perm || can(item.perm));
+  // Filter nav by permission; superAdminOnly items only show for super_admin
+  const nav = NAV_ALL.filter(item => {
+    if (item.superAdminOnly) return role === 'super_admin';
+    return !item.perm || can(item.perm);
+  });
 
   async function handleLogout() {
     await logout();

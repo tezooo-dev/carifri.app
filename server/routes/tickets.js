@@ -1,187 +1,321 @@
-const router  = require('express').Router();
+const router = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
-const { getDb } = require('../db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { one, all, run } = require('../lib/db');
+const { requireAuth, requireRole, companyId } = require('../middleware/auth');
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-function parseTicket(row) {
-  if (!row) return null;
-  return {
-    ...row,
-    attachments: JSON.parse(row.attachments || '[]'),
-  };
-}
+// ---------------------------------------------------------------------------
+// GET /  — list tickets with optional filters
+// ---------------------------------------------------------------------------
+router.get('/', requireAuth, async (req, res) => {
+  try {
+    const { market, status, category, priority, q } = req.query;
+    const mkt = market || req.user.market || 'kenya';
+    const cid = companyId(req);
 
-function now() {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
+    const conditions = ['market = $1'];
+    const params = [mkt];
+    let idx = 2;
 
-// ── GET /api/tickets  — list (auth required, filtered by market) ──────────────
-router.get('/', requireAuth, (req, res) => {
-  const { market, status, category, priority, q } = req.query;
-  const mkt  = market || req.user.market || 'kenya';
-  let   sql  = 'SELECT * FROM tickets WHERE market = ?';
-  const args = [mkt];
+    if (cid) {
+      conditions.push(`company_id = $${idx++}`);
+      params.push(cid);
+    }
+    if (status) {
+      conditions.push(`status = $${idx++}`);
+      params.push(status);
+    }
+    if (category) {
+      conditions.push(`category = $${idx++}`);
+      params.push(category);
+    }
+    if (priority) {
+      conditions.push(`priority = $${idx++}`);
+      params.push(priority);
+    }
+    if (q) {
+      const like = `%${q}%`;
+      conditions.push(
+        `(title ILIKE $${idx} OR submitter_name ILIKE $${idx + 1} OR submitter_email ILIKE $${idx + 2})`
+      );
+      params.push(like, like, like);
+      idx += 3;
+    }
 
-  if (status)   { sql += ' AND status = ?';   args.push(status);   }
-  if (category) { sql += ' AND category = ?'; args.push(category); }
-  if (priority) { sql += ' AND priority = ?'; args.push(priority); }
-  if (q) {
-    sql += ' AND (title LIKE ? OR submitter_name LIKE ? OR submitter_email LIKE ?)';
-    const like = `%${q}%`;
-    args.push(like, like, like);
+    const sql = `SELECT * FROM tickets WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`;
+    const rows = await all(sql, params);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  sql += ' ORDER BY created_at DESC';
-  res.json(getDb().prepare(sql).all(...args).map(parseTicket));
 });
 
-// ── GET /api/tickets/stats  — summary counts ─────────────────────────────────
-router.get('/stats', requireAuth, (req, res) => {
-  const mkt = req.query.market || req.user.market || 'kenya';
-  const db  = getDb();
-  const byStatus   = db.prepare("SELECT status, COUNT(*) as count FROM tickets WHERE market = ? GROUP BY status").all(mkt);
-  const byCategory = db.prepare("SELECT category, COUNT(*) as count FROM tickets WHERE market = ? GROUP BY category").all(mkt);
-  const byPriority = db.prepare("SELECT priority, COUNT(*) as count FROM tickets WHERE market = ? GROUP BY priority").all(mkt);
-  const total      = db.prepare("SELECT COUNT(*) as c FROM tickets WHERE market = ?").get(mkt).c;
-  const openCritical = db.prepare("SELECT COUNT(*) as c FROM tickets WHERE market = ? AND status IN ('Open','In Progress') AND priority = 'Critical'").get(mkt).c;
-  res.json({ total, openCritical, byStatus, byCategory, byPriority });
-});
+// ---------------------------------------------------------------------------
+// GET /stats
+// ---------------------------------------------------------------------------
+router.get('/stats', requireAuth, async (req, res) => {
+  try {
+    const mkt = req.query.market || req.user.market || 'kenya';
+    const cid = companyId(req);
 
-// ── GET /api/tickets/:id  — detail + comments ────────────────────────────────
-router.get('/:id', requireAuth, (req, res) => {
-  const ticket = getDb().prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
-  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
-  const comments = getDb().prepare('SELECT * FROM ticket_comments WHERE ticket_id = ? ORDER BY created_at ASC').all(req.params.id);
-  res.json({ ...parseTicket(ticket), comments });
-});
+    const companyFilter = cid ? ' AND company_id = $2' : '';
+    const baseParams = cid ? [mkt, cid] : [mkt];
 
-// ── POST /api/tickets  — create (auth required — ops or admin) ────────────────
-router.post('/', requireAuth, (req, res) => {
-  const {
-    title, description, category, priority,
-    submitterName, submitterEmail, submitterType, submitterRef,
-    loadRef, market,
-  } = req.body;
+    const [byStatus, byCategory, byPriority, totalRow, openCriticalRow] = await Promise.all([
+      all(
+        `SELECT status, COUNT(*) AS count FROM tickets WHERE market = $1${companyFilter} GROUP BY status`,
+        baseParams
+      ),
+      all(
+        `SELECT category, COUNT(*) AS count FROM tickets WHERE market = $1${companyFilter} GROUP BY category`,
+        baseParams
+      ),
+      all(
+        `SELECT priority, COUNT(*) AS count FROM tickets WHERE market = $1${companyFilter} GROUP BY priority`,
+        baseParams
+      ),
+      one(
+        `SELECT COUNT(*) AS c FROM tickets WHERE market = $1${companyFilter}`,
+        baseParams
+      ),
+      one(
+        `SELECT COUNT(*) AS c FROM tickets WHERE market = $1${companyFilter} AND status IN ('Open','In Progress') AND priority = 'Critical'`,
+        baseParams
+      ),
+    ]);
 
-  if (!title?.trim() || !submitterName?.trim()) {
-    return res.status(400).json({ error: 'title and submitter name are required' });
+    res.json({
+      total: Number(totalRow.c),
+      openCritical: Number(openCriticalRow.c),
+      byStatus,
+      byCategory,
+      byPriority,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const mkt = market || req.user.market || 'kenya';
-  const id  = 'TKT-' + uuidv4().slice(0, 8).toUpperCase();
-
-  getDb().prepare(`
-    INSERT INTO tickets (id, market, title, description, category, priority,
-      submitter_name, submitter_email, submitter_type, submitter_ref, load_ref, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, mkt,
-    title.trim(), (description || '').trim(),
-    category     || 'Support',
-    priority     || 'Medium',
-    submitterName.trim(),
-    (submitterEmail || '').trim(),
-    submitterType || 'carrier',
-    submitterRef  || '',
-    loadRef       || '',
-    now(), now()
-  );
-
-  res.status(201).json(parseTicket(getDb().prepare('SELECT * FROM tickets WHERE id = ?').get(id)));
 });
 
-// ── PATCH /api/tickets/:id  — update status / assignment / priority ───────────
-router.patch('/:id', requireAuth, (req, res) => {
-  const { status, assignedTo, priority } = req.body;
-  const ticket = getDb().prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id);
-  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+// ---------------------------------------------------------------------------
+// GET /:id  — single ticket with comments
+// ---------------------------------------------------------------------------
+router.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const cid = companyId(req);
+    const cidFilter = cid ? ' AND company_id = $2' : '';
+    const ticketParams = cid ? [req.params.id, cid] : [req.params.id];
 
-  const newStatus    = status     ?? ticket.status;
-  const newAssigned  = assignedTo !== undefined ? assignedTo : ticket.assigned_to;
-  const newPriority  = priority   ?? ticket.priority;
-  const resolvedAt   = newStatus === 'Resolved' || newStatus === 'Closed' ? now() : ticket.resolved_at;
+    const ticket = await one(
+      `SELECT * FROM tickets WHERE id = $1${cidFilter}`,
+      ticketParams
+    );
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
 
-  getDb().prepare(`
-    UPDATE tickets SET status = ?, assigned_to = ?, priority = ?, resolved_at = ?, updated_at = ? WHERE id = ?
-  `).run(newStatus, newAssigned, newPriority, resolvedAt || '', now(), req.params.id);
+    const comments = await all(
+      'SELECT * FROM ticket_comments WHERE ticket_id = $1 ORDER BY created_at ASC',
+      [req.params.id]
+    );
 
-  res.json(parseTicket(getDb().prepare('SELECT * FROM tickets WHERE id = ?').get(req.params.id)));
-});
-
-// ── DELETE /api/tickets/:id  — admin only ─────────────────────────────────────
-router.delete('/:id', requireAuth, requireRole('admin'), (req, res) => {
-  const info = getDb().prepare('DELETE FROM tickets WHERE id = ?').run(req.params.id);
-  if (info.changes === 0) return res.status(404).json({ error: 'Not found' });
-  res.json({ ok: true });
-});
-
-// ── POST /api/tickets/:id/comments  — add comment / reply ────────────────────
-router.post('/:id/comments', requireAuth, (req, res) => {
-  const { body, isInternal } = req.body;
-  if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
-
-  const ticket = getDb().prepare('SELECT id FROM tickets WHERE id = ?').get(req.params.id);
-  if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
-
-  const result = getDb().prepare(`
-    INSERT INTO ticket_comments (ticket_id, author_id, author_name, author_role, body, is_internal, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    req.params.id,
-    req.user.id,
-    req.user.name,
-    req.user.role,
-    body.trim(),
-    isInternal ? 1 : 0,
-    now()
-  );
-
-  // bump updated_at
-  getDb().prepare('UPDATE tickets SET updated_at = ? WHERE id = ?').run(now(), req.params.id);
-
-  res.status(201).json(getDb().prepare('SELECT * FROM ticket_comments WHERE id = ?').get(result.lastInsertRowid));
-});
-
-// ── Public submit endpoint — no auth, for external portals ────────────────────
-// POST /api/tickets/public  — carrier / vendor can submit without login
-router.post('/public', (req, res) => {
-  const {
-    title, description, category, priority,
-    submitterName, submitterEmail, submitterType, submitterRef,
-    loadRef, market, accessKey,
-  } = req.body;
-
-  // Basic spam gate: require a known access key env var if set
-  const GATE = process.env.PUBLIC_TICKET_KEY;
-  if (GATE && accessKey !== GATE) {
-    return res.status(403).json({ error: 'Invalid access key' });
+    res.json({ ...ticket, comments });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+});
 
-  if (!title?.trim() || !submitterName?.trim() || !submitterEmail?.trim()) {
-    return res.status(400).json({ error: 'title, name and email are required' });
+// ---------------------------------------------------------------------------
+// POST /public  — unauthenticated ticket submission (must be before POST /)
+// ---------------------------------------------------------------------------
+router.post('/public', async (req, res) => {
+  try {
+    const {
+      title, description, category, priority,
+      submitterName, submitterEmail, submitterType, submitterRef, loadRef,
+      market, accessKey,
+    } = req.body;
+
+    const GATE = process.env.PUBLIC_TICKET_KEY;
+    if (GATE && accessKey !== GATE) {
+      return res.status(403).json({ error: 'Invalid access key' });
+    }
+
+    if (!title?.trim() || !submitterName?.trim() || !submitterEmail?.trim()) {
+      return res.status(400).json({ error: 'title, name and email are required' });
+    }
+
+    const mkt = market || 'kenya';
+    const id = 'TKT-' + uuidv4().slice(0, 8).toUpperCase();
+
+    await run(
+      `INSERT INTO tickets
+         (id, company_id, market, title, description, category, priority,
+          submitter_name, submitter_email, submitter_type, submitter_ref, load_ref,
+          created_at, updated_at)
+       VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())`,
+      [
+        id, mkt,
+        title.trim(),
+        (description || '').trim(),
+        category || 'Support',
+        priority || 'Medium',
+        submitterName.trim(),
+        submitterEmail.trim(),
+        submitterType || 'carrier',
+        submitterRef || '',
+        loadRef || '',
+      ]
+    );
+
+    res.status(201).json({
+      id,
+      message: 'Ticket submitted successfully. Our team will contact you shortly.',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
+});
 
-  const mkt = market || 'kenya';
-  const id  = 'TKT-' + uuidv4().slice(0, 8).toUpperCase();
+// ---------------------------------------------------------------------------
+// POST /  — create ticket (authenticated)
+// ---------------------------------------------------------------------------
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    const {
+      title, description, category, priority,
+      submitterName, submitterEmail, submitterType, submitterRef, loadRef, market,
+    } = req.body;
 
-  getDb().prepare(`
-    INSERT INTO tickets (id, market, title, description, category, priority,
-      submitter_name, submitter_email, submitter_type, submitter_ref, load_ref, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, mkt,
-    title.trim(), (description || '').trim(),
-    category     || 'Support',
-    priority     || 'Medium',
-    submitterName.trim(),
-    submitterEmail.trim(),
-    submitterType || 'carrier',
-    submitterRef  || '',
-    loadRef       || '',
-    now(), now()
-  );
+    if (!title?.trim() || !submitterName?.trim()) {
+      return res.status(400).json({ error: 'title and submitter name are required' });
+    }
 
-  res.status(201).json({ id, message: 'Ticket submitted successfully. Our team will contact you shortly.' });
+    const mkt = market || req.user.market || 'kenya';
+    const cid = companyId(req);
+    const id = 'TKT-' + uuidv4().slice(0, 8).toUpperCase();
+
+    const row = await one(
+      `INSERT INTO tickets
+         (id, company_id, market, title, description, category, priority,
+          submitter_name, submitter_email, submitter_type, submitter_ref, load_ref,
+          created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+       RETURNING *`,
+      [
+        id, cid, mkt,
+        title.trim(),
+        (description || '').trim(),
+        category || 'Support',
+        priority || 'Medium',
+        submitterName.trim(),
+        (submitterEmail || '').trim(),
+        submitterType || 'carrier',
+        submitterRef || '',
+        loadRef || '',
+      ]
+    );
+
+    res.status(201).json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /:id  — update status / assignee / priority
+// ---------------------------------------------------------------------------
+router.patch('/:id', requireAuth, async (req, res) => {
+  try {
+    const cid = companyId(req);
+    const cidFilter = cid ? ' AND company_id = $2' : '';
+    const ticketParams = cid ? [req.params.id, cid] : [req.params.id];
+
+    const ticket = await one(
+      `SELECT * FROM tickets WHERE id = $1${cidFilter}`,
+      ticketParams
+    );
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    const { status, assignedTo, priority } = req.body;
+    const newStatus = status ?? ticket.status;
+    const newAssigned = assignedTo !== undefined ? assignedTo : ticket.assigned_to;
+    const newPriority = priority ?? ticket.priority;
+    const resolvedAt =
+      newStatus === 'Resolved' || newStatus === 'Closed'
+        ? new Date()
+        : ticket.resolved_at;
+
+    const updated = await one(
+      `UPDATE tickets
+          SET status = $1, assigned_to = $2, priority = $3,
+              resolved_at = $4, updated_at = NOW()
+        WHERE id = $5
+        RETURNING *`,
+      [newStatus, newAssigned, newPriority, resolvedAt || null, req.params.id]
+    );
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /:id
+// ---------------------------------------------------------------------------
+router.delete('/:id', requireAuth, requireRole('admin'), async (req, res) => {
+  try {
+    const cid = companyId(req);
+    const cidFilter = cid ? ' AND company_id = $2' : '';
+    const params = cid ? [req.params.id, cid] : [req.params.id];
+
+    const result = await run(
+      `DELETE FROM tickets WHERE id = $1${cidFilter}`,
+      params
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /:id/comments
+// ---------------------------------------------------------------------------
+router.post('/:id/comments', requireAuth, async (req, res) => {
+  try {
+    const { body, isInternal } = req.body;
+    if (!body?.trim()) return res.status(400).json({ error: 'body is required' });
+
+    const cid = companyId(req);
+    const cidFilter = cid ? ' AND company_id = $2' : '';
+    const ticketParams = cid ? [req.params.id, cid] : [req.params.id];
+
+    const ticket = await one(
+      `SELECT id FROM tickets WHERE id = $1${cidFilter}`,
+      ticketParams
+    );
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    const comment = await one(
+      `INSERT INTO ticket_comments
+         (ticket_id, author_id, author_name, author_role, body, is_internal, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       RETURNING *`,
+      [
+        req.params.id,
+        req.user.sub,
+        req.user.name,
+        req.user.role,
+        body.trim(),
+        isInternal ? true : false,
+      ]
+    );
+
+    await run('UPDATE tickets SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+
+    res.status(201).json(comment);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

@@ -2,104 +2,133 @@
  * Stripe billing routes
  *
  * Env vars required:
- *   STRIPE_SECRET_KEY       sk_live_... or sk_test_...
- *   STRIPE_WEBHOOK_SECRET   whsec_... (from Stripe dashboard → Webhooks)
- *   STRIPE_PRICE_STARTER    price_... (Starter plan price ID)
- *   STRIPE_PRICE_PRO        price_... (Professional plan price ID)
- *   APP_URL                 https://app.yourcompany.com
+ *   STRIPE_SECRET_KEY          sk_live_... or sk_test_...
+ *   STRIPE_WEBHOOK_SECRET      whsec_...
+ *   STRIPE_PRICE_STARTER       price_...
+ *   STRIPE_PRICE_PRO           price_...
+ *   APP_URL                    https://app.example.com
+ *
+ * Subscriptions are keyed by company_id (not user_id).
+ * Trial eligibility is derived from companies.created_at.
  */
 
 const router = require('express').Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { getDb } = require('../db');
+const { one, run } = require('../lib/db');
 
 const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
-
 function getStripe() {
-  if (!STRIPE_KEY) {
-    throw new Error('STRIPE_SECRET_KEY not set in environment');
-  }
+  if (!STRIPE_KEY) throw new Error('STRIPE_SECRET_KEY not set');
   return require('stripe')(STRIPE_KEY);
 }
 
 const APP_URL = () => process.env.APP_URL || 'http://localhost:5173';
 
 const PLANS = {
-  starter:      { name: 'Starter',      price: process.env.STRIPE_PRICE_STARTER || null },
-  professional: { name: 'Professional', price: process.env.STRIPE_PRICE_PRO     || null },
+  starter: { name: 'Starter', price: process.env.STRIPE_PRICE_STARTER || null },
+  professional: { name: 'Professional', price: process.env.STRIPE_PRICE_PRO || null },
 };
 
-// GET /api/billing/status  — current subscription status
-router.get('/status', requireAuth, (req, res) => {
-  const db  = getDb();
-  const row = db.prepare('SELECT * FROM subscriptions WHERE user_id = ?').get(req.user.sub);
-  if (!row) {
-    // Check if still in trial (users created within 14 days are on trial)
-    const user = db.prepare('SELECT created_at FROM users WHERE id = ?').get(req.user.sub);
-    const trialEnd = user ? new Date(new Date(user.created_at).getTime() + 14 * 86400000) : null;
-    const inTrial  = trialEnd && trialEnd > new Date();
-    return res.json({
-      plan:     'trial',
-      status:   inTrial ? 'trialing' : 'expired',
-      trialEnd: trialEnd?.toISOString() || null,
-    });
+// ---------------------------------------------------------------------------
+// GET /status  — current subscription / trial status for the caller's company
+// ---------------------------------------------------------------------------
+router.get('/status', requireAuth, async (req, res) => {
+  try {
+    const cid = req.user.companyId;
+
+    const row = await one(
+      'SELECT * FROM subscriptions WHERE company_id = $1',
+      [cid]
+    );
+
+    if (!row) {
+      const company = await one(
+        'SELECT created_at FROM companies WHERE id = $1',
+        [cid]
+      );
+      const trialEnd = company
+        ? new Date(new Date(company.created_at).getTime() + 14 * 86_400_000)
+        : null;
+      const inTrial = trialEnd && trialEnd > new Date();
+      return res.json({
+        plan: 'trial',
+        status: inTrial ? 'trialing' : 'expired',
+        trialEnd: trialEnd?.toISOString() || null,
+      });
+    }
+
+    res.json(row);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  res.json(row);
 });
 
-// POST /api/billing/checkout  — create Stripe checkout session
+// ---------------------------------------------------------------------------
+// POST /checkout  — create a Stripe Checkout session
+// ---------------------------------------------------------------------------
 router.post('/checkout', requireAuth, requireRole('admin'), async (req, res) => {
-  const { plan } = req.body || {};
-  if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan. Use starter or professional.' });
-  if (!PLANS[plan].price) return res.status(400).json({ error: `STRIPE_PRICE_${plan.toUpperCase()} not configured` });
-
   try {
-    const stripe  = getStripe();
-    const db      = getDb();
-    const user    = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.sub);
+    const { plan } = req.body || {};
+    if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
+    if (!PLANS[plan].price) {
+      return res.status(400).json({
+        error: `STRIPE_PRICE_${plan.toUpperCase()} not configured`,
+      });
+    }
+
+    const stripe = getStripe();
+    const user = await one('SELECT * FROM users WHERE id = $1', [req.user.sub]);
+
     const session = await stripe.checkout.sessions.create({
-      mode:               'subscription',
+      mode: 'subscription',
       payment_method_types: ['card'],
       line_items: [{ price: PLANS[plan].price, quantity: 1 }],
       customer_email: user.email,
-      metadata:       { user_id: req.user.sub, plan },
-      success_url:    `${APP_URL()}/billing?success=1`,
-      cancel_url:     `${APP_URL()}/billing?cancelled=1`,
+      metadata: { company_id: req.user.companyId, plan },
+      success_url: `${APP_URL()}/billing?success=1`,
+      cancel_url: `${APP_URL()}/billing?cancelled=1`,
       subscription_data: { trial_period_days: 14 },
     });
+
     res.json({ url: session.url });
   } catch (err) {
-    console.error('Stripe checkout error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/billing/portal  — customer portal (manage/cancel subscription)
+// ---------------------------------------------------------------------------
+// POST /portal  — create a Stripe Customer Portal session
+// ---------------------------------------------------------------------------
 router.post('/portal', requireAuth, requireRole('admin'), async (req, res) => {
   try {
-    const stripe  = getStripe();
-    const db      = getDb();
-    const row     = db.prepare('SELECT stripe_customer_id FROM subscriptions WHERE user_id = ?').get(req.user.sub);
-    if (!row?.stripe_customer_id) return res.status(400).json({ error: 'No active subscription found' });
+    const stripe = getStripe();
+    const row = await one(
+      'SELECT stripe_customer_id FROM subscriptions WHERE company_id = $1',
+      [req.user.companyId]
+    );
+    if (!row?.stripe_customer_id) {
+      return res.status(400).json({ error: 'No active subscription found' });
+    }
+
     const session = await stripe.billingPortal.sessions.create({
-      customer:   row.stripe_customer_id,
+      customer: row.stripe_customer_id,
       return_url: `${APP_URL()}/billing`,
     });
+
     res.json({ url: session.url });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/billing/webhook  — Stripe webhook handler (raw body required)
+// ---------------------------------------------------------------------------
+// POST /webhook  — Stripe webhook handler (raw body required)
+// ---------------------------------------------------------------------------
 router.post('/webhook', async (req, res) => {
-  const sig    = req.headers['stripe-signature'];
+  const sig = req.headers['stripe-signature'];
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
 
-  if (!secret) {
-    console.warn('⚠️  STRIPE_WEBHOOK_SECRET not set — skipping webhook verification');
-    return res.json({ received: true });
-  }
+  if (!secret) return res.json({ received: true });
 
   let event;
   try {
@@ -109,35 +138,62 @@ router.post('/webhook', async (req, res) => {
     return res.status(400).send(`Webhook error: ${err.message}`);
   }
 
-  const db = getDb();
+  try {
+    // -----------------------------------------------------------------------
+    // checkout.session.completed — new subscription created
+    // -----------------------------------------------------------------------
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const { company_id, plan } = session.metadata || {};
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const { user_id, plan } = session.metadata || {};
-    if (user_id) {
-      db.prepare(`
-        INSERT INTO subscriptions (user_id, plan, status, stripe_customer_id, stripe_subscription_id, current_period_end)
-        VALUES (?,?,?,?,?,?)
-        ON CONFLICT(user_id) DO UPDATE SET
-          plan=excluded.plan, status=excluded.status,
-          stripe_customer_id=excluded.stripe_customer_id,
-          stripe_subscription_id=excluded.stripe_subscription_id,
-          current_period_end=excluded.current_period_end
-      `).run(user_id, plan || 'starter', 'active', session.customer, session.subscription,
-          new Date(Date.now() + 30 * 86400000).toISOString());
-      console.log(`✅ Subscription activated for user ${user_id} (${plan})`);
+      if (company_id) {
+        await run(
+          `INSERT INTO subscriptions
+             (company_id, plan, status, stripe_customer_id, stripe_subscription_id,
+              current_period_end)
+           VALUES ($1, $2, 'active', $3, $4, $5)
+           ON CONFLICT (company_id) DO UPDATE
+             SET plan                  = EXCLUDED.plan,
+                 status                = EXCLUDED.status,
+                 stripe_customer_id    = EXCLUDED.stripe_customer_id,
+                 stripe_subscription_id = EXCLUDED.stripe_subscription_id,
+                 current_period_end    = EXCLUDED.current_period_end`,
+          [
+            company_id,
+            plan || 'starter',
+            session.customer,
+            session.subscription,
+            new Date(Date.now() + 30 * 86_400_000),
+          ]
+        );
+      }
     }
-  }
 
-  if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-    const sub = event.data.object;
-    const row = db.prepare('SELECT * FROM subscriptions WHERE stripe_subscription_id = ?').get(sub.id);
-    if (row) {
-      const status = sub.status === 'active' ? 'active' : sub.status === 'canceled' ? 'canceled' : sub.status;
-      db.prepare('UPDATE subscriptions SET status = ?, current_period_end = ? WHERE stripe_subscription_id = ?')
-        .run(status, new Date(sub.current_period_end * 1000).toISOString(), sub.id);
-      console.log(`🔄 Subscription ${sub.id} → ${status}`);
+    // -----------------------------------------------------------------------
+    // customer.subscription.updated / deleted
+    // -----------------------------------------------------------------------
+    if (
+      event.type === 'customer.subscription.updated' ||
+      event.type === 'customer.subscription.deleted'
+    ) {
+      const sub = event.data.object;
+      const normalizedStatus =
+        sub.status === 'active'
+          ? 'active'
+          : sub.status === 'canceled'
+          ? 'canceled'
+          : sub.status;
+
+      await run(
+        `UPDATE subscriptions
+            SET status = $1, current_period_end = $2
+          WHERE stripe_subscription_id = $3`,
+        [normalizedStatus, new Date(sub.current_period_end * 1000), sub.id]
+      );
     }
+  } catch (err) {
+    // Log but still return 200 so Stripe doesn't retry indefinitely
+    console.error('Webhook processing error:', err.message);
   }
 
   res.json({ received: true });
